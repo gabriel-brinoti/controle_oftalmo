@@ -1,0 +1,83 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="page-title">
+    <div>
+        <h1>Histórico de Movimentações</h1>
+        {% if produto_nome %}
+            <p class="subtitulo">Movimentações do produto: <strong>{{ produto_nome }}</strong></p>
+        {% else %}
+            <p class="subtitulo">Entradas e saídas registradas automaticamente.</p>
+        {% endif %}
+    </div>
+    <a class="btn" href="{{ url_for('produtos') }}">Voltar para Produtos</a>
+</div>
+
+{% if not produto_nome %}
+<div class="filtro-card">
+    <form method="GET">
+        <div>
+            <label>Buscar produto</label>
+            <input
+                type="text"
+                name="busca"
+                placeholder="Nome do produto"
+                value="{{ busca or '' }}"
+            >
+        </div>
+
+        <div>
+            <label>Tipo</label>
+            <select name="tipo">
+                <option value="">Todos</option>
+                <option value="entrada" {% if tipo == 'entrada' %}selected{% endif %}>Entrada</option>
+                <option value="saida" {% if tipo == 'saida' %}selected{% endif %}>Saída</option>
+            </select>
+        </div>
+
+        <button type="submit">Pesquisar</button>
+        <a class="btn-limpar" href="{{ url_for('historico') }}">Limpar</a>
+    </form>
+</div>
+{% endif %}
+
+<div class="mini-resumo">
+    <strong>{{ movimentacoes|length }}</strong>
+    <span>movimentação(ões) encontrada(s)</span>
+</div>
+
+<table class="tabela-premium">
+    <thead>
+        <tr>
+            <th>Data</th>
+            <th>Produto</th>
+            <th>Tipo</th>
+            <th>Quantidade</th>
+            <th>Anterior</th>
+            <th>Atual</th>
+            <th>Observação</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for mov in movimentacoes %}
+        <tr>
+            <td>{{ mov.data_movimentacao }}</td>
+            <td><strong>{{ mov.produto_nome }}</strong></td>
+            <td>
+                <span class="badge {{ 'success' if mov.tipo_movimentacao == 'entrada' else 'danger' }}">
+                    {{ 'Entrada' if mov.tipo_movimentacao == 'entrada' else 'Saída' }}
+                </span>
+            </td>
+            <td>{{ mov.quantidade }}</td>
+            <td>{{ mov.estoque_anterior }}</td>
+            <td>{{ mov.estoque_atual }}</td>
+            <td>{{ mov.observacao or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="7" class="sem-registro">Nenhuma movimentação encontrada.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

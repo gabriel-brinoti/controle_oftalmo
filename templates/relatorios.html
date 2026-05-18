@@ -1,0 +1,101 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="page-title">
+    <div>
+        <h1>Relatórios</h1>
+        <p class="subtitulo">Exporte dados do sistema em Excel ou PDF com identidade visual.</p>
+    </div>
+</div>
+
+<div class="relatorios-grid">
+
+    <div class="relatorio-card">
+        <h2>Produtos gerais</h2>
+        <p>Lista completa de produtos, categorias, validade, estoque e status.</p>
+
+        <form method="GET" action="{{ url_for('exportar_relatorio') }}">
+            <input type="hidden" name="tipo_relatorio" value="produtos">
+
+            <label>Buscar produto ou lote</label>
+            <input type="text" name="busca" placeholder="Opcional">
+
+            <label>Formato</label>
+            <select name="formato">
+                <option value="xlsx">Excel</option>
+                <option value="pdf">PDF</option>
+            </select>
+
+            <button type="submit">Exportar</button>
+        </form>
+    </div>
+
+    <div class="relatorio-card">
+        <h2>Vencidos e próximos</h2>
+        <p>Produtos vencidos, vencendo em até 3 dias ou vencidos após abertura.</p>
+
+        <form method="GET" action="{{ url_for('exportar_relatorio') }}">
+            <input type="hidden" name="tipo_relatorio" value="vencimentos">
+
+            <label>Buscar produto ou lote</label>
+            <input type="text" name="busca" placeholder="Opcional">
+
+            <label>Formato</label>
+            <select name="formato">
+                <option value="xlsx">Excel</option>
+                <option value="pdf">PDF</option>
+            </select>
+
+            <button type="submit">Exportar</button>
+        </form>
+    </div>
+
+    <div class="relatorio-card">
+        <h2>Estoque baixo</h2>
+        <p>Produtos com estoque baixo ou estoque zerado.</p>
+
+        <form method="GET" action="{{ url_for('exportar_relatorio') }}">
+            <input type="hidden" name="tipo_relatorio" value="estoque">
+
+            <label>Buscar produto ou lote</label>
+            <input type="text" name="busca" placeholder="Opcional">
+
+            <label>Formato</label>
+            <select name="formato">
+                <option value="xlsx">Excel</option>
+                <option value="pdf">PDF</option>
+            </select>
+
+            <button type="submit">Exportar</button>
+        </form>
+    </div>
+
+    <div class="relatorio-card destaque">
+        <h2>Movimentações</h2>
+        <p>Entradas e saídas de estoque com quantidade, data, estoque anterior e atual.</p>
+
+        <form method="GET" action="{{ url_for('exportar_relatorio') }}">
+            <input type="hidden" name="tipo_relatorio" value="movimentacoes">
+
+            <label>Buscar produto</label>
+            <input type="text" name="busca" placeholder="Opcional">
+
+            <label>Tipo de movimentação</label>
+            <select name="tipo_movimentacao">
+                <option value="">Todas</option>
+                <option value="entrada">Entrada</option>
+                <option value="saida">Saída</option>
+            </select>
+
+            <label>Formato</label>
+            <select name="formato">
+                <option value="xlsx">Excel</option>
+                <option value="pdf">PDF</option>
+            </select>
+
+            <button type="submit">Exportar</button>
+        </form>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="page-title">
+    <div>
+        <h1>Segurança e Backup</h1>
+        <p class="subtitulo">Proteja os dados do sistema com backup local e senha segura.</p>
+    </div>
+</div>
+
+{% if senha_padrao %}
+<div class="security-alert">
+    <strong>Atenção:</strong>
+    a senha padrão <b>admin123</b> ainda está ativa. Troque a senha para aumentar a segurança.
+</div>
+{% endif %}
+
+<div class="security-grid">
+
+    <section class="security-card">
+        <h2>Exportar backup</h2>
+        <p>Baixe uma cópia atual do banco de dados do sistema.</p>
+
+        <a class="btn btn-full" href="{{ url_for('exportar_backup') }}">
+            Exportar backup agora
+        </a>
+
+        <small>Um backup automático também será salvo na pasta <b>backups/</b>.</small>
+    </section>
+
+    <section class="security-card danger-zone">
+        <h2>Restaurar backup</h2>
+        <p>Substitui o banco atual por um arquivo de backup válido.</p>
+
+        <form method="POST" action="{{ url_for('restaurar_backup') }}" enctype="multipart/form-data" onsubmit="return confirm('Tem certeza? O banco atual será substituído, mas um backup automático será criado antes.')">
+            <label>Arquivo de backup</label>
+            <input type="file" name="backup" accept=".db,.sqlite,.sqlite3" required>
+
+            <button type="submit">Restaurar backup</button>
+        </form>
+
+        <small>Antes de restaurar, o sistema salva automaticamente o banco atual.</small>
+    </section>
+
+    <section class="security-card">
+        <h2>Alterar senha</h2>
+        <p>Atualize a senha do administrador único do sistema.</p>
+
+        <form method="POST" action="{{ url_for('alterar_senha') }}">
+            <label>Senha atual</label>
+            <input type="password" name="senha_atual" required>
+
+            <label>Nova senha</label>
+            <input type="password" name="nova_senha" minlength="6" required>
+
+            <label>Confirmar nova senha</label>
+            <input type="password" name="confirmar_senha" minlength="6" required>
+
+            <button type="submit">Alterar senha</button>
+        </form>
+
+        <small>Você continuará logado após alterar a senha.</small>
+    </section>
+
+    <section class="security-card">
+        <h2>Últimos backups locais</h2>
+        <p>Lista dos últimos arquivos salvos automaticamente na pasta do sistema.</p>
+
+        {% if backups %}
+            <div class="backup-list">
+                {% for backup in backups %}
+                    <div class="backup-item">
+                        <strong>{{ backup.nome }}</strong>
+                        <span>{{ backup.modificado }} · {{ backup.tamanho }} KB</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="empty-state light">Nenhum backup local encontrado ainda.</p>
+        {% endif %}
+    </section>
+
+</div>
+{% endblock %}

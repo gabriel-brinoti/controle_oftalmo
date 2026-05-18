@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="page-title">
+    <h1>Categorias</h1>
+    <a class="btn" href="{{ url_for('nova_categoria') }}">Nova Categoria</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Categoria</th>
+            <th>Descrição</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for categoria in categorias %}
+        <tr>
+            <td>{{ categoria.nome }}</td>
+            <td>{{ categoria.descricao or '-' }}</td>
+            <td class="acoes">
+                <a href="{{ url_for('editar_categoria', id=categoria.id) }}">Editar</a>
+                <form method="POST" action="{{ url_for('excluir_categoria', id=categoria.id) }}" onsubmit="return confirm('Excluir categoria?')">
+                    <button type="submit">Excluir</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

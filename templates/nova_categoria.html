@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<h1>Nova Categoria</h1>
+
+<form class="form-card" method="POST">
+    <label>Nome</label>
+    <input type="text" name="nome" required>
+
+    <label>Descrição</label>
+    <textarea name="descricao"></textarea>
+
+    <button type="submit">Salvar Categoria</button>
+</form>
+{% endblock %}

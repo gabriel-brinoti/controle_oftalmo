@@ -1,0 +1,116 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="page-title">
+    <div>
+        <h1>Produtos</h1>
+        <p class="subtitulo">Controle premium de validade, abertura e estoque.</p>
+    </div>
+    <a class="btn" href="{{ url_for('novo_produto') }}">+ Novo Produto</a>
+</div>
+
+<div class="filtro-card">
+    <form method="GET">
+        <div>
+            <label>Buscar</label>
+            <input
+                type="text"
+                name="busca"
+                placeholder="Nome ou lote"
+                value="{{ busca or '' }}"
+            >
+        </div>
+
+        <div>
+            <label>Categoria</label>
+            <select name="categoria_id">
+                <option value="">Todas</option>
+                {% for categoria in categorias %}
+                    <option value="{{ categoria.id }}"
+                        {% if categoria_id == categoria.id|string %}selected{% endif %}>
+                        {{ categoria.nome }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label>Status</label>
+            <select name="filtro">
+                <option value="todos" {% if filtro == 'todos' %}selected{% endif %}>Todos</option>
+                <option value="vencidos" {% if filtro == 'vencidos' %}selected{% endif %}>Vencidos</option>
+                <option value="proximos" {% if filtro == 'proximos' %}selected{% endif %}>Próximos</option>
+                <option value="estoque" {% if filtro == 'estoque' %}selected{% endif %}>Estoque</option>
+            </select>
+        </div>
+
+        <button type="submit">Pesquisar</button>
+        <a class="btn-limpar" href="{{ url_for('produtos') }}">Limpar</a>
+    </form>
+</div>
+
+<div class="mini-resumo">
+    <strong>{{ produtos_status|length }}</strong>
+    <span>produto(s) encontrado(s)</span>
+</div>
+
+<table class="tabela-premium">
+    <thead>
+        <tr>
+            <th>Produto</th>
+            <th>Categoria</th>
+            <th>Lote</th>
+            <th>Vencimento</th>
+            <th>Aberto em</th>
+            <th>Vence após aberto</th>
+            <th>Estoque</th>
+            <th>Status</th>
+            <th>Movimentar</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in produtos_status %}
+        <tr>
+            <td><strong>{{ item.produto.nome }}</strong></td>
+            <td>{{ item.produto.categoria_nome }}</td>
+            <td>{{ item.produto.lote or '-' }}</td>
+            <td>{{ item.produto.data_vencimento }}</td>
+            <td>{{ item.produto.data_abertura or '-' }}</td>
+            <td>{{ item.status.vencimento_apos_aberto or '-' }}</td>
+            <td>
+                <strong>{{ item.produto.quantidade_atual }}</strong>
+                <span class="estoque-total">/ {{ item.produto.estoque_padrao }}</span>
+            </td>
+            <td><span class="badge {{ item.status.tipo }}">{{ item.status.texto }}</span></td>
+            <td>
+                <div class="estoque-box">
+                    <form method="POST" action="{{ url_for('baixar_estoque', id=item.produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="observacao" placeholder="Obs. opcional">
+                        <button class="btn-baixar" type="submit">Baixar</button>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('repor_estoque', id=item.produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="observacao" placeholder="Obs. opcional">
+                        <button class="btn-repor" type="submit">Repor</button>
+                    </form>
+                </div>
+            </td>
+            <td class="acoes">
+                <a href="{{ url_for('editar_produto', id=item.produto.id) }}">Editar</a>
+                <a class="btn-historico" href="{{ url_for('historico_produto', id=item.produto.id) }}">Histórico</a>
+                <form method="POST" action="{{ url_for('excluir_produto', id=item.produto.id) }}" onsubmit="return confirm('Excluir este produto?')">
+                    <button type="submit">Excluir</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="10" class="sem-registro">Nenhum produto encontrado.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ titulo or "Controle de Qualidade" }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if session.get("admin_logado") %}
+<header class="topbar">
+    <div class="brand">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" onerror="this.style.display='none'">
+        <span>Controle Oftalmo</span>
+    </div>
+    <nav>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('produtos') }}">Produtos</a>
+        <a href="{{ url_for('categorias') }}">Categorias</a>
+        <a href="{{ url_for('historico') }}">Histórico</a>
+        <a href="{{ url_for('relatorios') }}">Relatórios</a>
+        <a href="{{ url_for('configuracoes') }}">Segurança</a>
+        <a class="sair" href="{{ url_for('logout') }}">Sair</a>
+    </nav>
+</header>
+{% endif %}
+
+<main class="container">
+    {% with mensagens = get_flashed_messages(with_categories=true) %}
+        {% if mensagens %}
+            <div class="mensagens">
+                {% for categoria, mensagem in mensagens %}
+                    <div class="msg {{ categoria }}">{{ mensagem }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    {% block conteudo %}{% endblock %}
+</main>
+</body>
+</html>

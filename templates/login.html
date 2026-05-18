@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Controle de Qualidade</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+    <div class="login-card">
+        <img class="login-logo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" onerror="this.style.display='none'">
+        <h1>Controle de Qualidade</h1>
+        <p>Sistema de controle de produtos oftalmológicos</p>
+
+        {% with mensagens = get_flashed_messages(with_categories=true) %}
+            {% if mensagens %}
+                {% for categoria, mensagem in mensagens %}
+                    <div class="msg {{ categoria }}">{{ mensagem }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <label>Usuário</label>
+            <input type="text" name="usuario" required>
+
+            <label>Senha</label>
+            <input type="password" name="senha" required>
+
+            <button type="submit">Entrar</button>
+        </form>
+
+        <small>Usuário inicial: admin | Senha inicial: admin123</small>
+    </div>
+</body>
+</html>
