@@ -1,35 +1,40 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
-import sqlite3
+import os
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 from datetime import datetime, date, timedelta
 from functools import wraps
 from io import BytesIO
-import os
-import shutil
+
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 
+
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "troque_essa_chave_secreta")
+app.secret_key = os.environ.get("SECRET_KEY", "chave_local_dev_troque_em_producao")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
 
-DATABASE = "database.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 ALERTA_DIAS = 3
 
 
 def conectar():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL não configurada. Configure no .env local ou nas variáveis do Render.")
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 
 def criar_banco():
@@ -38,7 +43,7 @@ def criar_banco():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS admin (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             usuario TEXT NOT NULL UNIQUE,
             senha_hash TEXT NOT NULL
         )
@@ -46,34 +51,33 @@ def criar_banco():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS categorias (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nome TEXT NOT NULL UNIQUE,
             descricao TEXT,
-            criado_em TEXT NOT NULL
+            criado_em TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nome TEXT NOT NULL,
-            categoria_id INTEGER NOT NULL,
+            categoria_id INTEGER NOT NULL REFERENCES categorias(id),
             lote TEXT,
-            data_vencimento TEXT NOT NULL,
-            data_abertura TEXT,
+            data_vencimento DATE NOT NULL,
+            data_abertura DATE,
             validade_apos_aberto_dias INTEGER,
             quantidade_atual INTEGER NOT NULL DEFAULT 0,
             estoque_padrao INTEGER NOT NULL DEFAULT 0,
             limite_alerta INTEGER NOT NULL DEFAULT 0,
             observacoes TEXT,
-            criado_em TEXT NOT NULL,
-            FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+            criado_em TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimentacoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             produto_id INTEGER,
             produto_nome TEXT NOT NULL,
             tipo_movimentacao TEXT NOT NULL,
@@ -81,19 +85,17 @@ def criar_banco():
             estoque_anterior INTEGER NOT NULL,
             estoque_atual INTEGER NOT NULL,
             observacao TEXT,
-            data_movimentacao TEXT NOT NULL
+            data_movimentacao TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
 
-
-    cursor.execute("SELECT id FROM admin WHERE usuario = ?", ("admin",))
+    cursor.execute("SELECT id FROM admin WHERE usuario = %s", ("admin",))
     admin = cursor.fetchone()
 
     if not admin:
-        senha_hash = generate_password_hash("admin123")
         cursor.execute(
-            "INSERT INTO admin (usuario, senha_hash) VALUES (?, ?)",
-            ("admin", senha_hash)
+            "INSERT INTO admin (usuario, senha_hash) VALUES (%s, %s)",
+            ("admin", generate_password_hash("admin123"))
         )
 
     conn.commit()
@@ -112,7 +114,19 @@ def login_obrigatorio(func):
 def converter_data(valor):
     if not valor:
         return None
-    return datetime.strptime(valor, "%Y-%m-%d").date()
+    if isinstance(valor, date):
+        return valor
+    return datetime.strptime(str(valor), "%Y-%m-%d").date()
+
+
+def formatar_data(valor):
+    if not valor:
+        return "-"
+    if isinstance(valor, datetime):
+        return valor.strftime("%d/%m/%Y %H:%M")
+    if isinstance(valor, date):
+        return valor.strftime("%d/%m/%Y")
+    return str(valor)
 
 
 def calcular_status(produto):
@@ -125,21 +139,12 @@ def calcular_status(produto):
         dias = (data_vencimento - hoje).days
 
         if dias < 0:
-            alertas.append({
-                "tipo": "danger",
-                "prioridade": 2,
-                "texto": "Vencido pela validade original"
-            })
+            alertas.append({"tipo": "danger", "prioridade": 2, "texto": "Vencido pela validade original"})
         elif dias <= ALERTA_DIAS:
-            alertas.append({
-                "tipo": "warning",
-                "prioridade": 4,
-                "texto": f"Vence em {dias} dia(s)"
-            })
+            alertas.append({"tipo": "warning", "prioridade": 4, "texto": f"Vence em {dias} dia(s)"})
 
     data_abertura = converter_data(produto["data_abertura"])
     validade_dias = produto["validade_apos_aberto_dias"]
-
     vencimento_apos_aberto = None
 
     if data_abertura and validade_dias:
@@ -147,48 +152,23 @@ def calcular_status(produto):
         dias_aberto = (vencimento_apos_aberto - hoje).days
 
         if dias_aberto < 0:
-            alertas.append({
-                "tipo": "danger",
-                "prioridade": 1,
-                "texto": "Vencido após abertura"
-            })
+            alertas.append({"tipo": "danger", "prioridade": 1, "texto": "Vencido após abertura"})
         elif dias_aberto <= ALERTA_DIAS:
-            alertas.append({
-                "tipo": "warning",
-                "prioridade": 3,
-                "texto": f"Vence após aberto em {dias_aberto} dia(s)"
-            })
+            alertas.append({"tipo": "warning", "prioridade": 3, "texto": f"Vence após aberto em {dias_aberto} dia(s)"})
 
     quantidade = produto["quantidade_atual"]
     limite = produto["limite_alerta"]
 
     if quantidade == 0:
-        alertas.append({
-            "tipo": "danger",
-            "prioridade": 5,
-            "texto": "Estoque zerado"
-        })
+        alertas.append({"tipo": "danger", "prioridade": 5, "texto": "Estoque zerado"})
     elif quantidade <= limite:
-        alertas.append({
-            "tipo": "stock",
-            "prioridade": 6,
-            "texto": "Estoque baixo"
-        })
+        alertas.append({"tipo": "stock", "prioridade": 6, "texto": "Estoque baixo"})
 
     if not alertas:
-        return {
-            "tipo": "success",
-            "texto": "Produto OK",
-            "vencimento_apos_aberto": vencimento_apos_aberto
-        }
+        return {"tipo": "success", "texto": "Produto OK", "vencimento_apos_aberto": vencimento_apos_aberto}
 
     principal = sorted(alertas, key=lambda x: x["prioridade"])[0]
-
-    return {
-        "tipo": principal["tipo"],
-        "texto": principal["texto"],
-        "vencimento_apos_aberto": vencimento_apos_aberto
-    }
+    return {"tipo": principal["tipo"], "texto": principal["texto"], "vencimento_apos_aberto": vencimento_apos_aberto}
 
 
 @app.route("/")
@@ -206,7 +186,7 @@ def login():
 
         conn = conectar()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM admin WHERE usuario = ?", (usuario,))
+        cursor.execute("SELECT * FROM admin WHERE usuario = %s", (usuario,))
         admin = cursor.fetchone()
         conn.close()
 
@@ -244,7 +224,7 @@ def dashboard():
     cursor.execute("""
         SELECT *
         FROM movimentacoes
-        WHERE data_movimentacao >= date('now', '-30 days')
+        WHERE data_movimentacao >= NOW() - INTERVAL '30 days'
         ORDER BY data_movimentacao DESC
     """)
     movimentacoes_30 = cursor.fetchall()
@@ -253,7 +233,7 @@ def dashboard():
         SELECT produto_nome, SUM(quantidade) AS total_saida
         FROM movimentacoes
         WHERE tipo_movimentacao = 'saida'
-          AND data_movimentacao >= date('now', '-30 days')
+          AND data_movimentacao >= NOW() - INTERVAL '30 days'
         GROUP BY produto_nome
         ORDER BY total_saida DESC
         LIMIT 5
@@ -262,10 +242,10 @@ def dashboard():
 
     cursor.execute("""
         SELECT 
-            SUM(CASE WHEN tipo_movimentacao = 'entrada' THEN quantidade ELSE 0 END) AS entradas,
-            SUM(CASE WHEN tipo_movimentacao = 'saida' THEN quantidade ELSE 0 END) AS saidas
+            COALESCE(SUM(CASE WHEN tipo_movimentacao = 'entrada' THEN quantidade ELSE 0 END), 0) AS entradas,
+            COALESCE(SUM(CASE WHEN tipo_movimentacao = 'saida' THEN quantidade ELSE 0 END), 0) AS saidas
         FROM movimentacoes
-        WHERE data_movimentacao >= date('now', '-30 days')
+        WHERE data_movimentacao >= NOW() - INTERVAL '30 days'
     """)
     resumo_mov = cursor.fetchone()
 
@@ -290,14 +270,11 @@ def dashboard():
     alertas_inteligentes = []
     previsoes = []
 
-    consumo_por_nome = {}
-    for item in consumo_top:
-        consumo_por_nome[item["produto_nome"]] = item["total_saida"] or 0
+    consumo_por_nome = {item["produto_nome"]: item["total_saida"] or 0 for item in consumo_top}
 
     for produto in produtos:
         status = calcular_status(produto)
         produtos_status.append({"produto": produto, "status": status})
-
         texto = status["texto"].lower()
 
         if "vencido após abertura" in texto:
@@ -324,44 +301,27 @@ def dashboard():
 
         saidas_30 = consumo_por_nome.get(produto["nome"], 0)
         if saidas_30 > 0:
-            media_diaria = saidas_30 / 30
-            if media_diaria > 0:
-                dias_estimados = int(produto["quantidade_atual"] / media_diaria) if produto["quantidade_atual"] > 0 else 0
-                previsoes.append({
-                    "produto": produto["nome"],
-                    "dias": dias_estimados,
-                    "estoque": produto["quantidade_atual"],
-                    "media": round(media_diaria, 2)
-                })
-
-    entradas = contadores["entradas_mes"]
-    saidas = contadores["saidas_mes"]
+            media_diaria = float(saidas_30) / 30
+            dias_estimados = int(produto["quantidade_atual"] / media_diaria) if produto["quantidade_atual"] > 0 else 0
+            previsoes.append({
+                "produto": produto["nome"],
+                "dias": dias_estimados,
+                "estoque": produto["quantidade_atual"],
+                "media": round(media_diaria, 2)
+            })
 
     grafico_movimentacoes = {
         "labels": ["Entradas", "Saídas"],
-        "dados": [entradas, saidas]
+        "dados": [int(contadores["entradas_mes"]), int(contadores["saidas_mes"])]
     }
-
-    grafico_estoque = {
-        "labels": ["OK", "Baixo", "Zerado"],
-        "dados": [estoque_ok, estoque_baixo, estoque_zerado]
-    }
-
+    grafico_estoque = {"labels": ["OK", "Baixo", "Zerado"], "dados": [estoque_ok, estoque_baixo, estoque_zerado]}
     grafico_consumo = {
         "labels": [item["produto_nome"] for item in consumo_top],
-        "dados": [item["total_saida"] or 0 for item in consumo_top]
+        "dados": [int(item["total_saida"] or 0) for item in consumo_top]
     }
 
-    ranking_consumo = [
-        {"produto": item["produto_nome"], "total": item["total_saida"] or 0}
-        for item in consumo_top
-    ]
-
-    produtos_criticos = [
-        item for item in produtos_status
-        if item["status"]["tipo"] != "success"
-    ][:8]
-
+    ranking_consumo = [{"produto": item["produto_nome"], "total": int(item["total_saida"] or 0)} for item in consumo_top]
+    produtos_criticos = [item for item in produtos_status if item["status"]["tipo"] != "success"][:8]
     previsoes = sorted(previsoes, key=lambda x: x["dias"])[:5]
     alertas_inteligentes = alertas_inteligentes[:8]
 
@@ -401,19 +361,18 @@ def nova_categoria():
             flash("O nome da categoria é obrigatório.", "erro")
             return render_template("nova_categoria.html")
 
+        conn = conectar()
+        cursor = conn.cursor()
         try:
-            conn = conectar()
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO categorias (nome, descricao, criado_em) VALUES (?, ?, ?)",
-                (nome, descricao, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            )
+            cursor.execute("INSERT INTO categorias (nome, descricao) VALUES (%s, %s)", (nome, descricao))
             conn.commit()
-            conn.close()
             flash("Categoria cadastrada com sucesso.", "sucesso")
             return redirect(url_for("categorias"))
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
+            conn.rollback()
             flash("Essa categoria já existe.", "erro")
+        finally:
+            conn.close()
 
     return render_template("nova_categoria.html")
 
@@ -432,18 +391,16 @@ def editar_categoria(id):
             flash("O nome da categoria é obrigatório.", "erro")
         else:
             try:
-                cursor.execute(
-                    "UPDATE categorias SET nome = ?, descricao = ? WHERE id = ?",
-                    (nome, descricao, id)
-                )
+                cursor.execute("UPDATE categorias SET nome = %s, descricao = %s WHERE id = %s", (nome, descricao, id))
                 conn.commit()
                 flash("Categoria atualizada com sucesso.", "sucesso")
                 conn.close()
                 return redirect(url_for("categorias"))
-            except sqlite3.IntegrityError:
+            except psycopg2.IntegrityError:
+                conn.rollback()
                 flash("Essa categoria já existe.", "erro")
 
-    cursor.execute("SELECT * FROM categorias WHERE id = ?", (id,))
+    cursor.execute("SELECT * FROM categorias WHERE id = %s", (id,))
     categoria = cursor.fetchone()
     conn.close()
 
@@ -459,19 +416,36 @@ def editar_categoria(id):
 def excluir_categoria(id):
     conn = conectar()
     cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) AS total FROM produtos WHERE categoria_id = ?", (id,))
+    cursor.execute("SELECT COUNT(*) AS total FROM produtos WHERE categoria_id = %s", (id,))
     total = cursor.fetchone()["total"]
 
     if total > 0:
         flash("Não é possível excluir uma categoria com produtos vinculados.", "erro")
     else:
-        cursor.execute("DELETE FROM categorias WHERE id = ?", (id,))
+        cursor.execute("DELETE FROM categorias WHERE id = %s", (id,))
         conn.commit()
         flash("Categoria excluída com sucesso.", "sucesso")
 
     conn.close()
     return redirect(url_for("categorias"))
+
+
+def listar_categorias():
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM categorias ORDER BY nome")
+    categorias = cursor.fetchall()
+    conn.close()
+    return categorias
+
+
+def registrar_movimentacao(cursor, produto_id, produto_nome, tipo_movimentacao, quantidade, estoque_anterior, estoque_atual, observacao):
+    cursor.execute("""
+        INSERT INTO movimentacoes (
+            produto_id, produto_nome, tipo_movimentacao, quantidade,
+            estoque_anterior, estoque_atual, observacao
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (produto_id, produto_nome, tipo_movimentacao, quantidade, estoque_anterior, estoque_atual, observacao))
 
 
 @app.route("/produtos")
@@ -493,26 +467,25 @@ def produtos():
     params = []
 
     if busca:
-        query += " AND (produtos.nome LIKE ? OR produtos.lote LIKE ?)"
+        query += " AND (produtos.nome ILIKE %s OR produtos.lote ILIKE %s)"
         params.extend([f"%{busca}%", f"%{busca}%"])
 
     if categoria_id:
-        query += " AND produtos.categoria_id = ?"
+        query += " AND produtos.categoria_id = %s"
         params.append(categoria_id)
 
     query += " ORDER BY produtos.nome"
 
     cursor.execute(query, params)
-    produtos = cursor.fetchall()
+    produtos_lista = cursor.fetchall()
     conn.close()
 
-    categorias = listar_categorias()
+    categorias_lista = listar_categorias()
     produtos_status = []
 
-    for produto in produtos:
+    for produto in produtos_lista:
         status = calcular_status(produto)
         texto = status["texto"].lower()
-
         mostrar = True
 
         if filtro == "vencidos":
@@ -531,98 +504,8 @@ def produtos():
         filtro=filtro,
         busca=busca,
         categoria_id=categoria_id,
-        categorias=categorias
+        categorias=categorias_lista
     )
-
-
-def validar_produto(form):
-    erros = []
-
-    nome = form.get("nome", "").strip()
-    categoria_id = form.get("categoria_id", "").strip()
-    data_vencimento = form.get("data_vencimento", "").strip()
-    data_abertura = form.get("data_abertura", "").strip()
-
-    quantidade_atual = int(form.get("quantidade_atual") or 0)
-    estoque_padrao = int(form.get("estoque_padrao") or 0)
-    limite_alerta = int(form.get("limite_alerta") or 0)
-    validade_apos_aberto_dias = form.get("validade_apos_aberto_dias", "").strip()
-
-    if not nome:
-        erros.append("Nome do produto é obrigatório.")
-
-    if not categoria_id:
-        erros.append("Categoria é obrigatória.")
-
-    if not data_vencimento:
-        erros.append("Data de vencimento é obrigatória.")
-
-    if quantidade_atual < 0:
-        erros.append("Quantidade atual não pode ser negativa.")
-
-    if estoque_padrao < 0:
-        erros.append("Estoque padrão não pode ser negativo.")
-
-    if limite_alerta < 0:
-        erros.append("Limite de alerta não pode ser negativo.")
-
-    if data_abertura:
-        abertura = converter_data(data_abertura)
-        if abertura and abertura > date.today():
-            erros.append("Data de abertura não pode ser futura.")
-
-        if not validade_apos_aberto_dias:
-            erros.append("Informe a validade após aberto em dias.")
-
-    if validade_apos_aberto_dias:
-        if int(validade_apos_aberto_dias) <= 0:
-            erros.append("Validade após aberto deve ser maior que zero.")
-
-    return erros
-
-
-def listar_categorias():
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM categorias ORDER BY nome")
-    categorias = cursor.fetchall()
-    conn.close()
-    return categorias
-
-
-
-def registrar_movimentacao(
-    cursor,
-    produto_id,
-    produto_nome,
-    tipo_movimentacao,
-    quantidade,
-    estoque_anterior,
-    estoque_atual,
-    observacao
-):
-    cursor.execute("""
-        INSERT INTO movimentacoes (
-            produto_id,
-            produto_nome,
-            tipo_movimentacao,
-            quantidade,
-            estoque_anterior,
-            estoque_atual,
-            observacao,
-            data_movimentacao
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        produto_id,
-        produto_nome,
-        tipo_movimentacao,
-        quantidade,
-        estoque_anterior,
-        estoque_atual,
-        observacao,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ))
-
 
 
 @app.route("/produtos/baixar_estoque/<int:id>", methods=["POST"])
@@ -641,7 +524,7 @@ def baixar_estoque(id):
 
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
+    cursor.execute("SELECT * FROM produtos WHERE id = %s", (id,))
     produto = cursor.fetchone()
 
     if not produto:
@@ -658,55 +541,14 @@ def baixar_estoque(id):
 
     estoque_atual = estoque_anterior - quantidade
 
-    cursor.execute(
-        "UPDATE produtos SET quantidade_atual = ? WHERE id = ?",
-        (estoque_atual, id)
-    )
-
-    registrar_movimentacao(
-        cursor=cursor,
-        produto_id=id,
-        produto_nome=produto["nome"],
-        tipo_movimentacao="saida",
-        quantidade=quantidade,
-        estoque_anterior=estoque_anterior,
-        estoque_atual=estoque_atual,
-        observacao=observacao
-    )
+    cursor.execute("UPDATE produtos SET quantidade_atual = %s WHERE id = %s", (estoque_atual, id))
+    registrar_movimentacao(cursor, id, produto["nome"], "saida", quantidade, estoque_anterior, estoque_atual, observacao)
 
     conn.commit()
     conn.close()
 
     flash("Estoque baixado e histórico registrado com sucesso.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
-
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
-    produto = cursor.fetchone()
-
-    if not produto:
-        conn.close()
-        flash("Produto não encontrado.", "erro")
-        return redirect(url_for("produtos"))
-
-    if quantidade > produto["quantidade_atual"]:
-        conn.close()
-        flash("Não é possível baixar mais do que o estoque atual.", "erro")
-        return redirect(url_for("produtos"))
-
-    novo_estoque = produto["quantidade_atual"] - quantidade
-
-    cursor.execute(
-        "UPDATE produtos SET quantidade_atual = ? WHERE id = ?",
-        (novo_estoque, id)
-    )
-
-    conn.commit()
-    conn.close()
-
-    flash("Estoque baixado com sucesso.", "sucesso")
-    return redirect(url_for("produtos"))
 
 
 @app.route("/produtos/repor_estoque/<int:id>", methods=["POST"])
@@ -725,7 +567,7 @@ def repor_estoque(id):
 
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
+    cursor.execute("SELECT * FROM produtos WHERE id = %s", (id,))
     produto = cursor.fetchone()
 
     if not produto:
@@ -736,21 +578,8 @@ def repor_estoque(id):
     estoque_anterior = produto["quantidade_atual"]
     estoque_atual = estoque_anterior + quantidade
 
-    cursor.execute(
-        "UPDATE produtos SET quantidade_atual = ? WHERE id = ?",
-        (estoque_atual, id)
-    )
-
-    registrar_movimentacao(
-        cursor=cursor,
-        produto_id=id,
-        produto_nome=produto["nome"],
-        tipo_movimentacao="entrada",
-        quantidade=quantidade,
-        estoque_anterior=estoque_anterior,
-        estoque_atual=estoque_atual,
-        observacao=observacao
-    )
+    cursor.execute("UPDATE produtos SET quantidade_atual = %s WHERE id = %s", (estoque_atual, id))
+    registrar_movimentacao(cursor, id, produto["nome"], "entrada", quantidade, estoque_anterior, estoque_atual, observacao)
 
     conn.commit()
     conn.close()
@@ -758,34 +587,49 @@ def repor_estoque(id):
     flash("Estoque reposto e histórico registrado com sucesso.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
-    produto = cursor.fetchone()
 
-    if not produto:
-        conn.close()
-        flash("Produto não encontrado.", "erro")
-        return redirect(url_for("produtos"))
+def validar_produto(form):
+    erros = []
+    nome = form.get("nome", "").strip()
+    categoria_id = form.get("categoria_id", "").strip()
+    data_vencimento = form.get("data_vencimento", "").strip()
+    data_abertura = form.get("data_abertura", "").strip()
 
-    novo_estoque = produto["quantidade_atual"] + quantidade
+    quantidade_atual = int(form.get("quantidade_atual") or 0)
+    estoque_padrao = int(form.get("estoque_padrao") or 0)
+    limite_alerta = int(form.get("limite_alerta") or 0)
+    validade_apos_aberto_dias = form.get("validade_apos_aberto_dias", "").strip()
 
-    cursor.execute(
-        "UPDATE produtos SET quantidade_atual = ? WHERE id = ?",
-        (novo_estoque, id)
-    )
+    if not nome:
+        erros.append("Nome do produto é obrigatório.")
+    if not categoria_id:
+        erros.append("Categoria é obrigatória.")
+    if not data_vencimento:
+        erros.append("Data de vencimento é obrigatória.")
+    if quantidade_atual < 0:
+        erros.append("Quantidade atual não pode ser negativa.")
+    if estoque_padrao < 0:
+        erros.append("Estoque padrão não pode ser negativo.")
+    if limite_alerta < 0:
+        erros.append("Limite de alerta não pode ser negativo.")
 
-    conn.commit()
-    conn.close()
+    if data_abertura:
+        abertura = converter_data(data_abertura)
+        if abertura and abertura > date.today():
+            erros.append("Data de abertura não pode ser futura.")
+        if not validade_apos_aberto_dias:
+            erros.append("Informe a validade após aberto em dias.")
 
-    flash("Estoque reposto com sucesso.", "sucesso")
-    return redirect(url_for("produtos"))
+    if validade_apos_aberto_dias and int(validade_apos_aberto_dias) <= 0:
+        erros.append("Validade após aberto deve ser maior que zero.")
+
+    return erros
 
 
 @app.route("/produtos/novo", methods=["GET", "POST"])
 @login_obrigatorio
 def novo_produto():
-    categorias = listar_categorias()
+    categorias_lista = listar_categorias()
 
     if request.method == "POST":
         erros = validar_produto(request.form)
@@ -793,17 +637,16 @@ def novo_produto():
         if erros:
             for erro in erros:
                 flash(erro, "erro")
-            return render_template("novo_produto.html", categorias=categorias)
+            return render_template("novo_produto.html", categorias=categorias_lista)
 
         conn = conectar()
         cursor = conn.cursor()
-
         cursor.execute("""
             INSERT INTO produtos (
                 nome, categoria_id, lote, data_vencimento, data_abertura,
                 validade_apos_aberto_dias, quantidade_atual, estoque_padrao,
-                limite_alerta, observacoes, criado_em
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                limite_alerta, observacoes
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             request.form.get("nome").strip(),
             request.form.get("categoria_id"),
@@ -814,27 +657,24 @@ def novo_produto():
             int(request.form.get("quantidade_atual") or 0),
             int(request.form.get("estoque_padrao") or 0),
             int(request.form.get("limite_alerta") or 0),
-            request.form.get("observacoes", "").strip(),
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            request.form.get("observacoes", "").strip()
         ))
-
         conn.commit()
         conn.close()
 
         flash("Produto cadastrado com sucesso.", "sucesso")
         return redirect(url_for("produtos"))
 
-    return render_template("novo_produto.html", categorias=categorias)
+    return render_template("novo_produto.html", categorias=categorias_lista)
 
 
 @app.route("/produtos/editar/<int:id>", methods=["GET", "POST"])
 @login_obrigatorio
 def editar_produto(id):
-    categorias = listar_categorias()
+    categorias_lista = listar_categorias()
     conn = conectar()
     cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
+    cursor.execute("SELECT * FROM produtos WHERE id = %s", (id,))
     produto = cursor.fetchone()
 
     if not produto:
@@ -849,21 +689,21 @@ def editar_produto(id):
             for erro in erros:
                 flash(erro, "erro")
             conn.close()
-            return render_template("editar_produto.html", produto=produto, categorias=categorias)
+            return render_template("editar_produto.html", produto=produto, categorias=categorias_lista)
 
         cursor.execute("""
             UPDATE produtos SET
-                nome = ?,
-                categoria_id = ?,
-                lote = ?,
-                data_vencimento = ?,
-                data_abertura = ?,
-                validade_apos_aberto_dias = ?,
-                quantidade_atual = ?,
-                estoque_padrao = ?,
-                limite_alerta = ?,
-                observacoes = ?
-            WHERE id = ?
+                nome = %s,
+                categoria_id = %s,
+                lote = %s,
+                data_vencimento = %s,
+                data_abertura = %s,
+                validade_apos_aberto_dias = %s,
+                quantidade_atual = %s,
+                estoque_padrao = %s,
+                limite_alerta = %s,
+                observacoes = %s
+            WHERE id = %s
         """, (
             request.form.get("nome").strip(),
             request.form.get("categoria_id"),
@@ -877,14 +717,13 @@ def editar_produto(id):
             request.form.get("observacoes", "").strip(),
             id
         ))
-
         conn.commit()
         conn.close()
         flash("Produto atualizado com sucesso.", "sucesso")
         return redirect(url_for("produtos"))
 
     conn.close()
-    return render_template("editar_produto.html", produto=produto, categorias=categorias)
+    return render_template("editar_produto.html", produto=produto, categorias=categorias_lista)
 
 
 @app.route("/produtos/excluir/<int:id>", methods=["POST"])
@@ -892,12 +731,11 @@ def editar_produto(id):
 def excluir_produto(id):
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM produtos WHERE id = ?", (id,))
+    cursor.execute("DELETE FROM produtos WHERE id = %s", (id,))
     conn.commit()
     conn.close()
     flash("Produto excluído com sucesso.", "sucesso")
     return redirect(url_for("produtos"))
-
 
 
 @app.route("/historico")
@@ -909,19 +747,15 @@ def historico():
     conn = conectar()
     cursor = conn.cursor()
 
-    query = """
-        SELECT *
-        FROM movimentacoes
-        WHERE 1=1
-    """
+    query = "SELECT * FROM movimentacoes WHERE 1=1"
     params = []
 
     if busca:
-        query += " AND produto_nome LIKE ?"
+        query += " AND produto_nome ILIKE %s"
         params.append(f"%{busca}%")
 
     if tipo:
-        query += " AND tipo_movimentacao = ?"
+        query += " AND tipo_movimentacao = %s"
         params.append(tipo)
 
     query += " ORDER BY data_movimentacao DESC"
@@ -930,13 +764,7 @@ def historico():
     movimentacoes = cursor.fetchall()
     conn.close()
 
-    return render_template(
-        "historico.html",
-        movimentacoes=movimentacoes,
-        busca=busca,
-        tipo=tipo,
-        produto_nome=None
-    )
+    return render_template("historico.html", movimentacoes=movimentacoes, busca=busca, tipo=tipo, produto_nome=None)
 
 
 @app.route("/historico/produto/<int:id>")
@@ -944,30 +772,14 @@ def historico():
 def historico_produto(id):
     conn = conectar()
     cursor = conn.cursor()
-
-    cursor.execute("SELECT nome FROM produtos WHERE id = ?", (id,))
+    cursor.execute("SELECT nome FROM produtos WHERE id = %s", (id,))
     produto = cursor.fetchone()
-
-    cursor.execute("""
-        SELECT *
-        FROM movimentacoes
-        WHERE produto_id = ?
-        ORDER BY data_movimentacao DESC
-    """, (id,))
-
+    cursor.execute("SELECT * FROM movimentacoes WHERE produto_id = %s ORDER BY data_movimentacao DESC", (id,))
     movimentacoes = cursor.fetchall()
     conn.close()
 
     produto_nome = produto["nome"] if produto else "Produto removido"
-
-    return render_template(
-        "historico.html",
-        movimentacoes=movimentacoes,
-        busca="",
-        tipo="",
-        produto_nome=produto_nome
-    )
-
+    return render_template("historico.html", movimentacoes=movimentacoes, busca="", tipo="", produto_nome=produto_nome)
 
 
 @app.route("/relatorios")
@@ -1024,7 +836,6 @@ def gerar_excel(titulo, cabecalhos, linhas, nome_arquivo):
     wb = Workbook()
     ws = wb.active
     ws.title = "Relatório"
-
     ws.append(cabecalhos)
 
     for linha in linhas:
@@ -1036,31 +847,16 @@ def gerar_excel(titulo, cabecalhos, linhas, nome_arquivo):
     wb.save(output)
     output.seek(0)
 
-    return send_file(
-        output,
-        as_attachment=True,
-        download_name=nome_arquivo,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    return send_file(output, as_attachment=True, download_name=nome_arquivo, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 def gerar_pdf(titulo, cabecalhos, linhas, nome_arquivo):
     output = BytesIO()
-
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        rightMargin=1 * cm,
-        leftMargin=1 * cm,
-        topMargin=1 * cm,
-        bottomMargin=1 * cm
-    )
-
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=1 * cm, leftMargin=1 * cm, topMargin=1 * cm, bottomMargin=1 * cm)
     styles = getSampleStyleSheet()
     elementos = []
 
     logo_path = os.path.join(app.root_path, "static", "logo.png")
-
     if os.path.exists(logo_path):
         try:
             elementos.append(Image(logo_path, width=2.0 * cm, height=2.0 * cm))
@@ -1094,18 +890,12 @@ def gerar_pdf(titulo, cabecalhos, linhas, nome_arquivo):
     doc.build(elementos)
     output.seek(0)
 
-    return send_file(
-        output,
-        as_attachment=True,
-        download_name=nome_arquivo,
-        mimetype="application/pdf"
-    )
+    return send_file(output, as_attachment=True, download_name=nome_arquivo, mimetype="application/pdf")
 
 
 def buscar_produtos_para_relatorio(busca=""):
     conn = conectar()
     cursor = conn.cursor()
-
     query = """
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
@@ -1115,40 +905,25 @@ def buscar_produtos_para_relatorio(busca=""):
     params = []
 
     if busca:
-        query += " AND (produtos.nome LIKE ? OR produtos.lote LIKE ?)"
+        query += " AND (produtos.nome ILIKE %s OR produtos.lote ILIKE %s)"
         params.extend([f"%{busca}%", f"%{busca}%"])
 
     query += " ORDER BY produtos.nome"
-
     cursor.execute(query, params)
-    produtos = cursor.fetchall()
+    produtos_lista = cursor.fetchall()
     conn.close()
-
-    return produtos
+    return produtos_lista
 
 
 def montar_relatorio_produtos(tipo_relatorio, busca=""):
-    produtos = buscar_produtos_para_relatorio(busca)
+    produtos_lista = buscar_produtos_para_relatorio(busca)
 
-    cabecalhos = [
-        "Produto",
-        "Categoria",
-        "Lote",
-        "Vencimento",
-        "Aberto em",
-        "Vence após aberto",
-        "Estoque",
-        "Estoque padrão",
-        "Limite alerta",
-        "Status"
-    ]
-
+    cabecalhos = ["Produto", "Categoria", "Lote", "Vencimento", "Aberto em", "Vence após aberto", "Estoque", "Estoque padrão", "Limite alerta", "Status"]
     linhas = []
 
-    for produto in produtos:
+    for produto in produtos_lista:
         status = calcular_status(produto)
         texto = status["texto"].lower()
-
         incluir = True
 
         if tipo_relatorio == "vencimentos":
@@ -1161,9 +936,9 @@ def montar_relatorio_produtos(tipo_relatorio, busca=""):
                 produto["nome"],
                 produto["categoria_nome"],
                 produto["lote"] or "-",
-                produto["data_vencimento"],
-                produto["data_abertura"] or "-",
-                status["vencimento_apos_aberto"] or "-",
+                formatar_data(produto["data_vencimento"]),
+                formatar_data(produto["data_abertura"]),
+                formatar_data(status["vencimento_apos_aberto"]),
                 produto["quantidade_atual"],
                 produto["estoque_padrao"],
                 produto["limite_alerta"],
@@ -1183,43 +958,28 @@ def montar_relatorio_produtos(tipo_relatorio, busca=""):
 def montar_relatorio_movimentacoes(busca="", tipo_movimentacao=""):
     conn = conectar()
     cursor = conn.cursor()
-
-    query = """
-        SELECT *
-        FROM movimentacoes
-        WHERE 1=1
-    """
+    query = "SELECT * FROM movimentacoes WHERE 1=1"
     params = []
 
     if busca:
-        query += " AND produto_nome LIKE ?"
+        query += " AND produto_nome ILIKE %s"
         params.append(f"%{busca}%")
 
     if tipo_movimentacao:
-        query += " AND tipo_movimentacao = ?"
+        query += " AND tipo_movimentacao = %s"
         params.append(tipo_movimentacao)
 
     query += " ORDER BY data_movimentacao DESC"
-
     cursor.execute(query, params)
     movimentacoes = cursor.fetchall()
     conn.close()
 
-    cabecalhos = [
-        "Data",
-        "Produto",
-        "Tipo",
-        "Quantidade",
-        "Estoque anterior",
-        "Estoque atual",
-        "Observação"
-    ]
-
+    cabecalhos = ["Data", "Produto", "Tipo", "Quantidade", "Estoque anterior", "Estoque atual", "Observação"]
     linhas = []
 
     for mov in movimentacoes:
         linhas.append([
-            mov["data_movimentacao"],
+            formatar_data(mov["data_movimentacao"]),
             mov["produto_nome"],
             "Entrada" if mov["tipo_movimentacao"] == "entrada" else "Saída",
             mov["quantidade"],
@@ -1256,48 +1016,10 @@ def exportar_relatorio():
     return gerar_pdf(titulo, cabecalhos, linhas, nome_arquivo)
 
 
-
-def caminho_banco():
-    return os.path.join(app.root_path, DATABASE)
-
-
-def criar_backup_automatico(motivo="automatico"):
-    pasta_backups = os.path.join(app.root_path, "backups")
-    os.makedirs(pasta_backups, exist_ok=True)
-
-    banco = caminho_banco()
-
-    if not os.path.exists(banco):
-        return None
-
-    data = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome = f"backup_{motivo}_{data}.db"
-    destino = os.path.join(pasta_backups, nome)
-
-    shutil.copy2(banco, destino)
-
-    return destino
-
-
-def validar_backup_sqlite(caminho_arquivo):
-    tabelas_obrigatorias = {"admin", "categorias", "produtos", "movimentacoes"}
-
-    try:
-        conn = sqlite3.connect(caminho_arquivo)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tabelas = {linha[0] for linha in cursor.fetchall()}
-        conn.close()
-
-        return tabelas_obrigatorias.issubset(tabelas)
-    except Exception:
-        return False
-
-
 def senha_padrao_ativa():
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("SELECT senha_hash FROM admin WHERE usuario = ?", ("admin",))
+    cursor.execute("SELECT senha_hash FROM admin WHERE usuario = %s", ("admin",))
     admin = cursor.fetchone()
     conn.close()
 
@@ -1310,86 +1032,7 @@ def senha_padrao_ativa():
 @app.route("/configuracoes")
 @login_obrigatorio
 def configuracoes():
-    pasta_backups = os.path.join(app.root_path, "backups")
-    os.makedirs(pasta_backups, exist_ok=True)
-
-    backups = []
-    for nome in os.listdir(pasta_backups):
-        if nome.endswith(".db"):
-            caminho = os.path.join(pasta_backups, nome)
-            backups.append({
-                "nome": nome,
-                "tamanho": round(os.path.getsize(caminho) / 1024, 2),
-                "modificado": datetime.fromtimestamp(os.path.getmtime(caminho)).strftime("%d/%m/%Y %H:%M")
-            })
-
-    backups = sorted(backups, key=lambda x: x["modificado"], reverse=True)[:10]
-
-    return render_template(
-        "configuracoes.html",
-        senha_padrao=senha_padrao_ativa(),
-        backups=backups
-    )
-
-
-@app.route("/backup/exportar")
-@login_obrigatorio
-def exportar_backup():
-    criar_backup_automatico("manual")
-
-    banco = caminho_banco()
-    nome_download = f"backup_controle_oftalmo_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.db"
-
-    if not os.path.exists(banco):
-        flash("Banco de dados não encontrado.", "erro")
-        return redirect(url_for("configuracoes"))
-
-    return send_file(
-        banco,
-        as_attachment=True,
-        download_name=nome_download,
-        mimetype="application/octet-stream"
-    )
-
-
-@app.route("/backup/restaurar", methods=["POST"])
-@login_obrigatorio
-def restaurar_backup():
-    arquivo = request.files.get("backup")
-
-    if not arquivo or arquivo.filename == "":
-        flash("Selecione um arquivo de backup.", "erro")
-        return redirect(url_for("configuracoes"))
-
-    nome_seguro = secure_filename(arquivo.filename)
-    extensao = nome_seguro.rsplit(".", 1)[-1].lower() if "." in nome_seguro else ""
-
-    if extensao not in ["db", "sqlite", "sqlite3"]:
-        flash("Arquivo inválido. Envie um backup .db, .sqlite ou .sqlite3.", "erro")
-        return redirect(url_for("configuracoes"))
-
-    pasta_temp = os.path.join(app.root_path, "backups")
-    os.makedirs(pasta_temp, exist_ok=True)
-
-    caminho_temp = os.path.join(
-        pasta_temp,
-        f"upload_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{nome_seguro}"
-    )
-
-    arquivo.save(caminho_temp)
-
-    if not validar_backup_sqlite(caminho_temp):
-        os.remove(caminho_temp)
-        flash("Backup inválido ou incompatível com este sistema.", "erro")
-        return redirect(url_for("configuracoes"))
-
-    criar_backup_automatico("antes_restauracao")
-
-    shutil.copy2(caminho_temp, caminho_banco())
-    os.remove(caminho_temp)
-
-    flash("Backup restaurado com sucesso.", "sucesso")
-    return redirect(url_for("configuracoes"))
+    return render_template("configuracoes.html", senha_padrao=senha_padrao_ativa())
 
 
 @app.route("/configuracoes/alterar_senha", methods=["POST"])
@@ -1409,7 +1052,7 @@ def alterar_senha():
 
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM admin WHERE usuario = ?", (session.get("usuario", "admin"),))
+    cursor.execute("SELECT * FROM admin WHERE usuario = %s", (session.get("usuario", "admin"),))
     admin = cursor.fetchone()
 
     if not admin or not check_password_hash(admin["senha_hash"], senha_atual):
@@ -1417,15 +1060,7 @@ def alterar_senha():
         flash("Senha atual incorreta.", "erro")
         return redirect(url_for("configuracoes"))
 
-    criar_backup_automatico("alteracao_senha")
-
-    nova_hash = generate_password_hash(nova_senha)
-
-    cursor.execute(
-        "UPDATE admin SET senha_hash = ? WHERE id = ?",
-        (nova_hash, admin["id"])
-    )
-
+    cursor.execute("UPDATE admin SET senha_hash = %s WHERE id = %s", (generate_password_hash(nova_senha), admin["id"]))
     conn.commit()
     conn.close()
 

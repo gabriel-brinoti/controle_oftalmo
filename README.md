@@ -1,26 +1,32 @@
-# Controle Oftalmo
+# Controle Oftalmo — Supabase/PostgreSQL
 
-Sistema web em Flask para controle de qualidade, validade, estoque, histórico de movimentações, relatórios e backup.
+Sistema Flask para controle de qualidade, validade, estoque, histórico, relatórios, dashboard e segurança.
 
-## Funcionalidades
+## Banco de dados
 
-- Login administrativo
-- Cadastro de produtos
-- Cadastro de categorias
-- Controle de validade original
-- Controle de validade após abertura
-- Alertas de vencimento
-- Controle de estoque
-- Histórico de movimentações
-- Relatórios Excel e PDF
-- Dashboard inteligente
-- Backup e restauração
-- Tela de segurança
+Esta versão usa PostgreSQL via Supabase.
+
+Não usa mais SQLite/database.db.
+
+## Configuração local
+
+Crie um arquivo `.env` na raiz do projeto:
+
+```env
+DATABASE_URL=sua_url_do_supabase
+SECRET_KEY=sua_chave_secreta
+FLASK_ENV=development
+```
+
+## Instalar dependências
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Rodar localmente
 
 ```bash
-pip install -r requirements.txt
 python app.py
 ```
 
@@ -37,9 +43,9 @@ usuário: admin
 senha: admin123
 ```
 
-Troque a senha na tela **Segurança** após o primeiro acesso.
+Troque a senha na tela Segurança após o primeiro acesso.
 
-## Deploy inicial no Render
+## Render
 
 Build command:
 
@@ -53,18 +59,16 @@ Start command:
 gunicorn app:app
 ```
 
-Ou use o `Procfile`:
+Variáveis de ambiente no Render:
 
 ```text
-web: gunicorn app:app
+DATABASE_URL=sua_url_do_supabase
+SECRET_KEY=sua_chave_secreta
+FLASK_ENV=production
 ```
 
-## Variáveis de ambiente recomendadas
+## Observações
 
-```text
-SECRET_KEY=uma_chave_segura_aqui
-```
-
-## Observação importante
-
-Esta versão ainda usa SQLite. Para uso comercial online, o próximo passo recomendado é migrar para PostgreSQL para evitar perda de dados em hospedagens gratuitas e melhorar a persistência.
+- O sistema cria as tabelas automaticamente ao iniciar.
+- Para backup completo do banco, use o painel do Supabase.
+- Para backup operacional, use os relatórios Excel/PDF do sistema.
