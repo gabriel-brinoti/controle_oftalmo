@@ -18,6 +18,24 @@
 </form>
 </div>
 
+
+<div class="license-panel">
+<h2>Backup externo — Supabase Storage</h2>
+
+{% if supabase_configurado %}
+<p><strong>Status:</strong> configurado</p>
+<p><strong>Bucket:</strong> {{ supabase_bucket }}</p>
+<p>Os backups automáticos também serão enviados para o Supabase Storage.</p>
+{% else %}
+<p><strong>Status:</strong> não configurado</p>
+<p>Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_BACKUP_BUCKET no Render.</p>
+{% endif %}
+
+<form method="POST" action="{{ url_for('testar_backup_supabase') }}">
+<button type="submit">Gerar backup e enviar para Supabase</button>
+</form>
+</div>
+
 <div class="license-panel">
 <h2>Últimos backups</h2>
 

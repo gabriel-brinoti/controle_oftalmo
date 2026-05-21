@@ -55,7 +55,60 @@
     </section>
 
     <section class="products-list-premium">
-        {% for item in produtos_status %}
+        
+{% if produtos_vencidos %}
+<section class="expired-products-section">
+    <div class="expired-products-head">
+        <div>
+            <span>Bloqueio de segurança</span>
+            <h2>Produtos vencidos / bloqueados</h2>
+            <p>Esses itens não podem ser retirados, transferidos ou usados na operação.</p>
+        </div>
+        <strong>{{ produtos_vencidos|length }} item(ns)</strong>
+    </div>
+
+    <div class="expired-products-grid">
+        {% for item in produtos_vencidos %}
+        {% set produto = item.produto %}
+        {% set status = item.status %}
+        <article class="expired-product-card">
+            <div>
+                <span class="expired-badge">Vencido</span>
+                <h3>{{ produto.nome }}</h3>
+                <p>{{ produto.categoria_nome }} • {{ 'Farmácia Satélite' if produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</p>
+            </div>
+
+            <div class="expired-product-info">
+                <div>
+                    <span>Quantidade</span>
+                    <strong>{{ produto.quantidade_atual }}</strong>
+                </div>
+                <div>
+                    <span>Vencimento</span>
+                    <strong>{{ produto.data_vencimento }}</strong>
+                </div>
+                <div>
+                    <span>Lote</span>
+                    <strong>{{ produto.lote or '-' }}</strong>
+                </div>
+            </div>
+
+            <div class="expired-warning">
+                {{ status.texto }} — item bloqueado para uso operacional.
+            </div>
+
+            <div class="expired-actions">
+                <a href="{{ url_for('editar_produto', id=produto.id) }}">Ajustar cadastro</a>
+                <a href="{{ url_for('historico_produto', id=produto.id) }}">Ver histórico</a>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% for item in produtos_status %}
+{% if item.vencido %}<div class="expired-warning">Produto vencido bloqueado para uso.</div>{% endif %}
         <article class="product-card-premium {{ item.status.tipo }}">
             <div class="product-main-info">
                 <div class="product-title-row">

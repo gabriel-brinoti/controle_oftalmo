@@ -408,3 +408,14 @@ Na tela de Alertas:
 - Ativar WhatsApp
 - Informar telefone com DDI/DDD
 - Configurar intervalo mínimo entre envios
+
+
+## Separação de Produtos Vencidos
+
+Inclui:
+- Produtos vencidos separados visualmente na tela de estoque
+- Destaque vermelho de segurança
+- Bloqueio de retirada por estoque
+- Bloqueio de transferência
+- Bloqueio de baixa rápida por scanner
+- Ações permitidas: ajustar cadastro e consultar histórico

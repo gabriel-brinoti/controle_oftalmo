@@ -7593,3 +7593,168 @@ button,
         align-items: flex-start;
     }
 }
+
+
+/* =========================================================
+   SEPARAÇÃO DE PRODUTOS VENCIDOS / BLOQUEIO OPERACIONAL
+   ========================================================= */
+
+.expired-products-section {
+    display: grid;
+    gap: 18px;
+    margin: 22px 0;
+    border: 1px solid #f3b5a9;
+    background:
+        radial-gradient(circle at top right, rgba(194, 65, 50, .13), transparent 35%),
+        linear-gradient(135deg, #fff8f6, #fffdf7);
+    border-radius: 28px;
+    padding: 24px;
+    box-shadow: 0 16px 36px rgba(194, 65, 50, .08);
+}
+
+.expired-products-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: flex-start;
+}
+
+.expired-products-head span {
+    color: #c24132;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+
+.expired-products-head h2 {
+    margin: 5px 0;
+    color: #7f1d1d;
+    font-size: 26px;
+    letter-spacing: -.04em;
+}
+
+.expired-products-head p {
+    margin: 0;
+    color: #8a5048;
+    font-weight: 700;
+}
+
+.expired-products-head > strong {
+    background: #ffe2dc;
+    color: #c24132;
+    border: 1px solid #f3b5a9;
+    border-radius: 999px;
+    padding: 10px 14px;
+    white-space: nowrap;
+}
+
+.expired-products-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.expired-product-card {
+    background: #fffdf7;
+    border: 1px solid #f3b5a9;
+    border-radius: 22px;
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+}
+
+.expired-badge {
+    display: inline-flex;
+    background: #c24132;
+    color: #fff;
+    border-radius: 999px;
+    padding: 7px 11px;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.expired-product-card h3 {
+    margin: 10px 0 0;
+    color: #7f1d1d;
+    font-size: 22px;
+}
+
+.expired-product-card p {
+    margin: 4px 0 0;
+    color: #8a5048;
+    font-weight: 700;
+}
+
+.expired-product-info {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.expired-product-info div {
+    background: #fff4f1;
+    border: 1px solid #f3b5a9;
+    border-radius: 16px;
+    padding: 12px;
+}
+
+.expired-product-info span,
+.expired-product-info strong {
+    display: block;
+}
+
+.expired-product-info span {
+    color: #8a5048;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.expired-product-info strong {
+    margin-top: 4px;
+    color: #7f1d1d;
+}
+
+.expired-warning,
+.scanner-expired-alert {
+    background: #ffe2dc;
+    border: 1px solid #f3b5a9;
+    color: #c24132;
+    border-radius: 16px;
+    padding: 12px 14px;
+    font-weight: 900;
+}
+
+.expired-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.expired-actions a {
+    background: #7f1d1d;
+    color: #fff;
+    border-radius: 999px;
+    padding: 9px 13px;
+    text-decoration: none;
+    font-weight: 900;
+}
+
+.expired-actions a:last-child {
+    background: #fff4f1;
+    color: #7f1d1d;
+    border: 1px solid #f3b5a9;
+}
+
+@media (max-width: 900px) {
+    .expired-products-head {
+        flex-direction: column;
+    }
+
+    .expired-products-grid,
+    .expired-product-info {
+        grid-template-columns: 1fr;
+    }
+}

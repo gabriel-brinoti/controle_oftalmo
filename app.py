@@ -84,12 +84,6 @@ def criar_banco():
 
     cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS tipo_estoque TEXT NOT NULL DEFAULT 'almoxarifado'")
     cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS codigo_barras TEXT")
-    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS tipo_estoque TEXT DEFAULT 'almoxarifado'")
-    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS estoque_origem TEXT")
-    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS estoque_destino TEXT")
-    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS usuario_id INTEGER")
-    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS usuario_nome TEXT")
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimentacoes (
             id SERIAL PRIMARY KEY,
@@ -108,6 +102,13 @@ def criar_banco():
             data_movimentacao TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
+
+    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS tipo_estoque TEXT DEFAULT 'almoxarifado'")
+    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS estoque_origem TEXT")
+    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS estoque_destino TEXT")
+    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS usuario_id INTEGER")
+    cursor.execute("ALTER TABLE movimentacoes ADD COLUMN IF NOT EXISTS usuario_nome TEXT")
+
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS licencas (
@@ -191,17 +192,18 @@ def criar_banco():
             INSERT INTO configuracoes_alerta (
                 email_destino,
                 telefone_whatsapp,
-                    intervalo_minutos,
+                intervalo_minutos,
                 usar_email,
                 usar_whatsapp,
                 alertar_vencimentos,
                 alertar_estoque,
                 alertar_ordem_compra,
                 hora_envio
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             "",
             "",
+            720,
             False,
             False,
             True,
@@ -437,6 +439,24 @@ def nome_tipo_estoque(tipo):
     return "Almoxarifado"
 
 
+
+def produto_esta_vencido(produto):
+    hoje = date.today()
+
+    data_vencimento = converter_data(produto["data_vencimento"])
+    if data_vencimento and data_vencimento < hoje:
+        return True
+
+    data_abertura = converter_data(produto["data_abertura"])
+    validade_dias = produto["validade_apos_aberto_dias"]
+
+    if data_abertura and validade_dias:
+        vencimento_apos_aberto = data_abertura + timedelta(days=int(validade_dias))
+        if vencimento_apos_aberto < hoje:
+            return True
+
+    return False
+
 def calcular_status(produto):
     hoje = date.today()
     alertas = []
@@ -505,6 +525,35 @@ def serializar_linhas(linhas):
 
     return resultado
 
+
+def enviar_backup_para_supabase(caminho_arquivo):
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    bucket = os.environ.get("SUPABASE_BACKUP_BUCKET", "backups")
+
+    if not supabase_url or not service_key:
+        return False, "Supabase Storage não configurado."
+
+    nome_arquivo = os.path.basename(caminho_arquivo)
+    storage_path = f"automaticos/{nome_arquivo}"
+
+    url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{storage_path}"
+
+    headers = {
+        "Authorization": f"Bearer {service_key}",
+        "apikey": service_key,
+        "Content-Type": "application/json",
+        "x-upsert": "true"
+    }
+
+    with open(caminho_arquivo, "rb") as arquivo:
+        resposta = requests.post(url, headers=headers, data=arquivo, timeout=60)
+
+    if resposta.status_code not in [200, 201]:
+        return False, f"Erro Supabase Storage: {resposta.status_code} - {resposta.text}"
+
+    return True, f"Backup enviado para Supabase Storage: {storage_path}"
+
 def gerar_backup_sistema():
     garantir_pasta_backup()
 
@@ -543,6 +592,15 @@ def gerar_backup_sistema():
     with open(caminho, "w", encoding="utf-8") as arquivo:
         json.dump(backup, arquivo, ensure_ascii=False, indent=4)
 
+    upload_ok = False
+    upload_mensagem = "Upload externo não executado."
+
+    try:
+        upload_ok, upload_mensagem = enviar_backup_para_supabase(caminho)
+    except Exception as erro:
+        upload_ok = False
+        upload_mensagem = f"Erro ao enviar backup externo: {erro}"
+
     limpar_backups_antigos()
 
     return caminho
@@ -563,13 +621,19 @@ def limpar_backups_antigos(limite=30):
             pass
 
 def iniciar_backup_automatico():
-    scheduler = BackgroundScheduler()
+    # Evita criar múltiplos agendadores no Flask debug/reloader
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "false":
+        return
+
+    scheduler = BackgroundScheduler(daemon=True)
 
     scheduler.add_job(
         gerar_backup_sistema,
         "cron",
         hour=2,
-        minute=0
+        minute=0,
+        id="backup_diario_sistema",
+        replace_existing=True
     )
 
     scheduler.start()
@@ -592,14 +656,29 @@ def painel_backup():
                 "modificado": datetime.fromtimestamp(os.path.getmtime(caminho))
             })
 
-    return render_template("backup_sistema.html", backups=backups)
+    return render_template(
+        "backup_sistema.html",
+        backups=backups,
+        supabase_configurado=bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")),
+        supabase_bucket=os.environ.get("SUPABASE_BACKUP_BUCKET", "backups")
+    )
+
+
+@app.route("/backup/testar_supabase", methods=["POST"])
+@login_obrigatorio
+@admin_obrigatorio
+def testar_backup_supabase():
+    caminho = gerar_backup_sistema()
+
+    flash("Backup local gerado e tentativa de envio ao Supabase executada.", "sucesso")
+    return redirect(url_for("painel_backup"))
 
 @app.route("/backup/manual", methods=["POST"])
 @login_obrigatorio
 @admin_obrigatorio
 def gerar_backup_manual():
     gerar_backup_sistema()
-    flash("Backup gerado com sucesso.", "sucesso")
+    flash("Backup manual gerado com sucesso.", "sucesso")
     return redirect(url_for("painel_backup"))
 
 @app.route("/")
@@ -614,8 +693,18 @@ def login():
     garantir_tabela_usuarios()
 
     if request.method == "POST":
-        usuario_digitado = request.form.get("usuario", request.form.get("login", "")).strip().lower()
-        senha_digitada = request.form.get("senha", "")
+        usuario_digitado = (
+            request.form.get("usuario")
+            or request.form.get("login")
+            or request.form.get("username")
+            or ""
+        ).strip().lower()
+
+        senha_digitada = (
+            request.form.get("senha")
+            or request.form.get("password")
+            or ""
+        )
 
         usuario = buscar_usuario_login(usuario_digitado)
 
@@ -763,6 +852,7 @@ def enviar_alerta_whatsapp_manual():
 @app.route("/dashboard")
 @login_obrigatorio
 @licenca_obrigatoria
+@admin_obrigatorio
 def dashboard():
 
     try:
@@ -1172,25 +1262,33 @@ def produtos(tipo_estoque=None):
 
     categorias_lista = listar_categorias()
     produtos_status = []
+    produtos_vencidos = []
 
     for produto in produtos_lista:
         status = calcular_status(produto)
         texto = status["texto"].lower()
+        vencido = produto_esta_vencido(produto)
         mostrar = True
 
         if filtro == "vencidos":
-            mostrar = "vencido" in texto
+            mostrar = vencido
         elif filtro == "proximos":
-            mostrar = "vence" in texto
+            mostrar = "vence" in texto and not vencido
         elif filtro == "estoque":
             mostrar = "estoque" in texto
 
+        item_status = {"produto": produto, "status": status, "vencido": vencido}
+
         if mostrar:
-            produtos_status.append({"produto": produto, "status": status})
+            if vencido:
+                produtos_vencidos.append(item_status)
+            else:
+                produtos_status.append(item_status)
 
     return render_template(
         "produtos.html",
         produtos_status=produtos_status,
+        produtos_vencidos=produtos_vencidos,
         filtro=filtro,
         busca=busca,
         categoria_id=categoria_id,
@@ -1225,6 +1323,12 @@ def baixar_estoque(id):
         conn.close()
         flash("Produto não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
+
+    if produto_esta_vencido(produto):
+        conn.close()
+        flash("Produto vencido bloqueado para uso. Faça descarte ou ajuste administrativo.", "erro")
+        return redirect(request.referrer or url_for("produtos"))
+
 
     estoque_anterior = produto["quantidade_atual"]
 
@@ -1394,6 +1498,12 @@ def transferir_estoque(id):
         flash("Produto de origem não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
+    if produto_esta_vencido(origem):
+        conn.close()
+        flash("Produto vencido bloqueado para transferência. Faça descarte ou ajuste administrativo.", "erro")
+        return redirect(request.referrer or url_for("produtos"))
+
+
     if origem["tipo_estoque"] == destino:
         conn.close()
         flash("O estoque de destino deve ser diferente do estoque de origem.", "erro")
@@ -1454,7 +1564,7 @@ def transferir_estoque(id):
                 limite_alerta,
                 observacoes,
                 tipo_estoque
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             origem["nome"],
@@ -1623,6 +1733,7 @@ def editar_produto(id):
 @app.route("/produtos/excluir/<int:id>", methods=["POST"])
 @login_obrigatorio
 @alteracao_permitida
+@estoque_obrigatorio
 def excluir_produto(id):
     conn = conectar()
     cursor = conn.cursor()
@@ -3115,6 +3226,21 @@ def scanner_baixa_rapida():
         flash("Produto não encontrado para baixa rápida.", "erro")
         return redirect(url_for("codigo_barras", codigo=codigo, modo="continuo"))
 
+    if produto_esta_vencido(produto):
+        conn.close()
+        registrar_auditoria_scanner(
+            codigo,
+            produto["id"],
+            produto["nome"],
+            "baixa_rapida",
+            quantidade,
+            "erro",
+            "Produto vencido bloqueado"
+        )
+        flash("Produto vencido bloqueado para baixa por scanner.", "erro")
+        return redirect(url_for("codigo_barras", codigo=codigo, modo="continuo"))
+
+
     if produto["quantidade_atual"] < quantidade:
         conn.close()
         registrar_auditoria_scanner(
@@ -3297,6 +3423,8 @@ def alterar_senha():
 
 # Inicialização do banco para ambiente local e deploy
 criar_banco()
+
+iniciar_backup_automatico()
 
 if __name__ == "__main__":
     app.run(debug=True)

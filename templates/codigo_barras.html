@@ -258,6 +258,12 @@
                     </div>
                 </div>
 
+                {% if status and 'vencido' in status.texto|lower %}
+                <div class="scanner-expired-alert">
+                    Produto vencido. Bloqueado para retirada/transferência por segurança.
+                </div>
+            {% endif %}
+
                 <div class="scanner-actions-title">
                     <span>Movimentação rápida</span>
                     <small>Informe a quantidade e confirme a ação desejada.</small>
