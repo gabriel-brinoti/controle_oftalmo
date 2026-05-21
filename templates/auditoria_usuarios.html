@@ -1,0 +1,69 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="user-audit-page">
+
+    <div class="user-audit-hero">
+        <div>
+            <span class="dash-eyebrow">Rastreabilidade</span>
+            <h1>Auditoria por Usuário</h1>
+            <p>Acompanhe quem movimentou produtos, quantidades e últimas ações no sistema.</p>
+        </div>
+    </div>
+
+    <section class="audit-summary-grid">
+        {% for item in resumo %}
+        <article class="audit-user-card">
+            <span>Usuário</span>
+            <h2>{{ item.usuario_nome }}</h2>
+
+            <div class="audit-user-metrics">
+                <div>
+                    <small>Ações</small>
+                    <strong>{{ item.total_movimentacoes }}</strong>
+                </div>
+                <div>
+                    <small>Saídas</small>
+                    <strong>{{ item.total_saidas }}</strong>
+                </div>
+                <div>
+                    <small>Entradas</small>
+                    <strong>{{ item.total_entradas }}</strong>
+                </div>
+            </div>
+
+            <p>Última ação: {{ item.ultima_acao or '-' }}</p>
+        </article>
+        {% else %}
+        <div class="realtime-empty">Nenhuma movimentação com usuário registrada ainda.</div>
+        {% endfor %}
+    </section>
+
+    <section class="audit-timeline-panel">
+        <div class="realtime-panel-head">
+            <div>
+                <span>Últimas ações</span>
+                <h2>Histórico auditável</h2>
+            </div>
+        </div>
+
+        <div class="audit-timeline-list">
+            {% for mov in movimentacoes %}
+            <div class="audit-timeline-item">
+                <div class="audit-avatar">{{ (mov.usuario_nome or 'S')[0] }}</div>
+                <div>
+                    <strong>{{ mov.usuario_nome or 'Sistema' }}</strong>
+                    <span>{{ mov.tipo_movimentacao|replace('_', ' ')|title }} • {{ mov.produto_nome }}</span>
+                    <small>{{ mov.data_movimentacao }} • Qtd: {{ mov.quantidade }} • {{ mov.observacao or 'Sem observação' }}</small>
+                </div>
+            </div>
+            {% else %}
+            <div class="realtime-empty">Nenhuma ação recente encontrada.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+</section>
+
+{% endblock %}

@@ -13,8 +13,17 @@
 </select>
 <a class="link-extra" href="{{ url_for('nova_categoria') }}">Cadastrar nova categoria</a>
 
+<label>Tipo de estoque</label>
+<select name="tipo_estoque" required>
+    <option value="almoxarifado" {% if not produto or produto.tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
+    <option value="farmacia_satelite" {% if produto and produto.tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+</select>
+
 <label>Lote</label>
 <input type="text" name="lote" value="{{ produto.lote if produto else '' }}">
+
+<label>Código de barras</label>
+<input type="text" name="codigo_barras" value="{{ produto.codigo_barras if produto else '' }}" placeholder="Bipe ou digite o código">
 
 <label>Data de vencimento original</label>
 <input type="date" name="data_vencimento" value="{{ produto.data_vencimento if produto else '' }}" required>

@@ -1,83 +1,182 @@
 
 {% extends "base.html" %}
 {% block conteudo %}
-<div class="page-title">
-    <div>
-        <h1>Histórico de Movimentações</h1>
-        {% if produto_nome %}
-            <p class="subtitulo">Movimentações do produto: <strong>{{ produto_nome }}</strong></p>
-        {% else %}
-            <p class="subtitulo">Entradas e saídas registradas automaticamente.</p>
-        {% endif %}
+
+<section class="history-premium-page">
+
+    <div class="history-hero">
+        <div>
+            <span class="dash-eyebrow">Auditoria operacional</span>
+            <h1>Histórico Premium</h1>
+            <p>Acompanhe retiradas, reposições, devoluções e transferências realizadas no estoque.</p>
+        </div>
+
+        <div class="history-hero-badge">
+            <span>Rastreabilidade</span>
+            <strong>{{ movimentacoes|length }} registro(s)</strong>
+        </div>
     </div>
-    <a class="btn" href="{{ url_for('produtos') }}">Voltar para Produtos</a>
-</div>
 
-{% if not produto_nome %}
-<div class="filtro-card">
-    <form method="GET">
+    <section class="history-filter-panel">
+        <form method="GET">
+            <div>
+                <label>Buscar produto</label>
+                <input type="text" name="busca" value="{{ busca or '' }}" placeholder="Nome do produto">
+            </div>
+
+            <div>
+                <label>Tipo de movimentação</label>
+                <select name="tipo">
+                    <option value="">Todos</option>
+                    <option value="retirada" {% if tipo == 'retirada' %}selected{% endif %}>Retirada</option>
+                    <option value="devolucao" {% if tipo == 'devolucao' %}selected{% endif %}>Devolução</option>
+                    <option value="reposicao" {% if tipo == 'reposicao' %}selected{% endif %}>Reposição</option>
+                    <option value="transferencia_saida" {% if tipo == 'transferencia_saida' %}selected{% endif %}>Transferência Saída</option>
+                    <option value="transferencia_entrada" {% if tipo == 'transferencia_entrada' %}selected{% endif %}>Transferência Entrada</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Estoque</label>
+                <select name="tipo_estoque">
+                    <option value="">Todos</option>
+                    <option value="almoxarifado" {% if tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
+                    <option value="farmacia_satelite" {% if tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+                </select>
+            </div>
+
+            <button type="submit">Filtrar</button>
+            <a href="{{ url_for('historico') }}">Limpar</a>
+        
         <div>
-            <label>Buscar produto</label>
-            <input
-                type="text"
-                name="busca"
-                placeholder="Nome do produto"
-                value="{{ busca or '' }}"
-            >
+            <label>Usuário</label>
+            <input type="text" name="usuario_nome" value="{{ usuario_nome or '' }}" placeholder="Ex: Maria, Estoque, Sala Central">
         </div>
 
-        <div>
-            <label>Tipo</label>
-            <select name="tipo">
-                <option value="">Todos</option>
-                <option value="entrada" {% if tipo == 'entrada' %}selected{% endif %}>Entrada</option>
-                <option value="saida" {% if tipo == 'saida' %}selected{% endif %}>Saída</option>
-            </select>
+        </form>
+    </section>
+
+    <section class="history-summary-grid">
+        <div class="history-summary-card">
+            <span>Total filtrado</span>
+            <strong>{{ movimentacoes|length }}</strong>
+            <small>movimentações encontradas</small>
         </div>
 
-        <button type="submit">Pesquisar</button>
-        <a class="btn-limpar" href="{{ url_for('historico') }}">Limpar</a>
-    </form>
-</div>
-{% endif %}
+        <div class="history-summary-card danger">
+            <span>Retiradas</span>
+            <strong>{{ movimentacoes|selectattr('tipo_movimentacao', 'equalto', 'retirada')|list|length }}</strong>
+            <small>saídas de estoque</small>
+        </div>
 
-<div class="mini-resumo">
-    <strong>{{ movimentacoes|length }}</strong>
-    <span>movimentação(ões) encontrada(s)</span>
-</div>
+        <div class="history-summary-card success">
+            <span>Reposições</span>
+            <strong>{{ movimentacoes|selectattr('tipo_movimentacao', 'equalto', 'reposicao')|list|length }}</strong>
+            <small>entradas por compra</small>
+        </div>
 
-<table class="tabela-premium">
-    <thead>
-        <tr>
-            <th>Data</th>
-            <th>Produto</th>
-            <th>Tipo</th>
-            <th>Quantidade</th>
-            <th>Anterior</th>
-            <th>Atual</th>
-            <th>Observação</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for mov in movimentacoes %}
-        <tr>
-            <td>{{ mov.data_movimentacao }}</td>
-            <td><strong>{{ mov.produto_nome }}</strong></td>
-            <td>
-                <span class="badge {{ 'success' if mov.tipo_movimentacao == 'entrada' else 'danger' }}">
-                    {{ 'Entrada' if mov.tipo_movimentacao == 'entrada' else 'Saída' }}
-                </span>
-            </td>
-            <td>{{ mov.quantidade }}</td>
-            <td>{{ mov.estoque_anterior }}</td>
-            <td>{{ mov.estoque_atual }}</td>
-            <td>{{ mov.observacao or '-' }}</td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="7" class="sem-registro">Nenhuma movimentação encontrada.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+        <div class="history-summary-card info">
+            <span>Transferências</span>
+            <strong>
+                {{
+                    (movimentacoes|selectattr('tipo_movimentacao', 'equalto', 'transferencia_saida')|list|length)
+                    +
+                    (movimentacoes|selectattr('tipo_movimentacao', 'equalto', 'transferencia_entrada')|list|length)
+                }}
+            </strong>
+            <small>movimentações internas</small>
+        </div>
+    </section>
+
+    <section class="history-panel">
+        <div class="panel-heading">
+            <div>
+                <span>Timeline</span>
+                <h2>{% if produto_nome %}Histórico de {{ produto_nome }}{% else %}Movimentações recentes{% endif %}</h2>
+            </div>
+        </div>
+
+        <div class="history-timeline">
+            {% for mov in movimentacoes %}
+            <article class="timeline-item {{ mov.tipo_movimentacao }}">
+                <div class="timeline-icon">
+                    {% if mov.tipo_movimentacao == 'retirada' or mov.tipo_movimentacao == 'saida' %}
+                        −
+                    {% elif mov.tipo_movimentacao == 'reposicao' or mov.tipo_movimentacao == 'entrada' %}
+                        +
+                    {% elif mov.tipo_movimentacao == 'devolucao' %}
+                        ↩
+                    {% elif mov.tipo_movimentacao == 'transferencia_saida' or mov.tipo_movimentacao == 'transferencia_entrada' %}
+                        ⇄
+                    {% else %}
+                        •
+                    {% endif %}
+                </div>
+
+                <div class="timeline-card">
+                    <div class="timeline-card-top">
+                        <div>
+                            <h3>{{ mov.produto_nome }}</h3>
+                            <span>{{ mov.data_movimentacao }}</span>
+                        </div>
+
+                        <span class="movement-badge {{ mov.tipo_movimentacao }}">
+                            {% if mov.tipo_movimentacao == 'transferencia_saida' %}
+                                Transferência Saída
+                            {% elif mov.tipo_movimentacao == 'transferencia_entrada' %}
+                                Transferência Entrada
+                            {% else %}
+                                {{ mov.tipo_movimentacao|replace('_', ' ')|title }}
+                            {% endif %}
+                        </span>
+                    </div>
+
+                    <div class="timeline-details">
+                        <div>
+                            <span>Estoque</span>
+                            <strong>{{ 'Farmácia Satélite' if mov.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</strong>
+                        </div>
+
+                        <div>
+                            <span>Quantidade</span>
+                            <strong>{{ mov.quantidade }}</strong>
+                        </div>
+
+                        <div>
+                            <span>Antes</span>
+                            <strong>{{ mov.estoque_anterior }}</strong>
+                        </div>
+
+                        <div>
+                            <span>Depois</span>
+                            <strong>{{ mov.estoque_atual }}</strong>
+                        </div>
+                    </div>
+
+                    {% if mov.estoque_origem or mov.estoque_destino %}
+                    <div class="transfer-route">
+                        <strong>Transferência:</strong>
+                        {{ 'Farmácia Satélite' if mov.estoque_origem == 'farmacia_satelite' else 'Almoxarifado' }}
+                        →
+                        {{ 'Farmácia Satélite' if mov.estoque_destino == 'farmacia_satelite' else 'Almoxarifado' }}
+                    </div>
+                    {% endif %}
+
+                    {% if mov.observacao %}
+                    <div class="timeline-note">
+                        <strong>Observação:</strong> {{ mov.observacao }}
+                    </div>
+                    {% endif %}
+                </div>
+            </article>
+            {% else %}
+            <div class="empty-premium history-empty">
+                Nenhuma movimentação encontrada com os filtros selecionados.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+</section>
+
 {% endblock %}

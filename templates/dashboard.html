@@ -1,238 +1,144 @@
 
 {% extends "base.html" %}
 {% block conteudo %}
-<section class="dash-hero">
-    <div>
-        <span class="dash-label">Painel inteligente</span>
-        <h1>Dashboard Futurista</h1>
-        <p>Estoque, movimentações, consumo e alertas em uma visão profissional.</p>
-    </div>
-    <div class="dash-glow"></div>
-</section>
 
-<div class="cards futuristic-cards">
-    <div class="card neon-card">
-        <span>Produtos cadastrados</span>
-        <strong>{{ contadores.total }}</strong>
-    </div>
-    <div class="card neon-card danger">
-        <span>Vencidos</span>
-        <strong>{{ contadores.vencidos + contadores.vencidos_abertos }}</strong>
-    </div>
-    <div class="card neon-card warning">
-        <span>Vencendo em até 3 dias</span>
-        <strong>{{ contadores.proximos }}</strong>
-    </div>
-    <div class="card neon-card stock">
-        <span>Estoque baixo</span>
-        <strong>{{ contadores.estoque_baixo }}</strong>
-    </div>
-    <div class="card neon-card danger">
-        <span>Estoque zerado</span>
-        <strong>{{ contadores.estoque_zerado }}</strong>
-    </div>
-    <div class="card neon-card">
-        <span>Movimentações 30 dias</span>
-        <strong>{{ contadores.movimentacoes_mes }}</strong>
-    </div>
-</div>
+<section class="ho-dashboard">
 
-<section class="analytics-grid">
-    <div class="analytics-card">
-        <div class="section-title">
-            <h2>Entradas x Saídas</h2>
-            <span>últimos 30 dias</span>
-        </div>
-        <canvas id="graficoMovimentacoes"></canvas>
+    <div class="ho-welcome">
+        <h1>Olá, Admin!</h1>
+        <p>Bem-vindo ao sistema de Controle de Estoque Oftalmológico.</p>
     </div>
 
-    <div class="analytics-card">
-        <div class="section-title">
-            <h2>Situação do Estoque</h2>
-            <span>visão atual</span>
-        </div>
-        <canvas id="graficoEstoque"></canvas>
-    </div>
-
-    <div class="analytics-card wide">
-        <div class="section-title">
-            <h2>Top 5 Produtos Mais Consumidos</h2>
-            <span>saídas nos últimos 30 dias</span>
-        </div>
-        <canvas id="graficoConsumo"></canvas>
-    </div>
-</section>
-
-<section class="insights-grid">
-    <div class="insight-card">
-        <div class="section-title">
-            <h2>Ranking de consumo</h2>
-            <span>produtos mais usados</span>
+    <section class="ho-metrics">
+        <div class="ho-metric-card">
+            <div class="ho-metric-icon">▣</div>
+            <div>
+                <span>Total de itens</span>
+                <strong>{{ contadores.total }}</strong>
+                <small>Produtos cadastrados</small>
+            </div>
         </div>
 
-        {% if ranking_consumo %}
-            <ol class="ranking-list">
-                {% for item in ranking_consumo %}
-                <li>
-                    <span>{{ item.produto }}</span>
-                    <strong>{{ item.total }} saída(s)</strong>
-                </li>
-                {% endfor %}
-            </ol>
-        {% else %}
-            <p class="empty-state">Ainda não há saídas suficientes para gerar ranking.</p>
-        {% endif %}
-    </div>
-
-    <div class="insight-card">
-        <div class="section-title">
-            <h2>Previsão de estoque</h2>
-            <span>estimativa simples</span>
+        <div class="ho-metric-card">
+            <div class="ho-metric-icon">✓</div>
+            <div>
+                <span>Estoque baixo</span>
+                <strong>{{ contadores.estoque_baixo }}</strong>
+                <small>Requer atenção</small>
+            </div>
         </div>
 
-        {% if previsoes %}
-            <div class="forecast-list">
-                {% for item in previsoes %}
-                    <div class="forecast-item">
-                        <strong>{{ item.produto }}</strong>
-                        <span>Estoque atual: {{ item.estoque }}</span>
-                        <small>Média: {{ item.media }} por dia</small>
-                        <b>Acaba em ~{{ item.dias }} dia(s)</b>
+        <div class="ho-metric-card danger">
+            <div class="ho-metric-icon">!</div>
+            <div>
+                <span>Itens zerados</span>
+                <strong>{{ contadores.estoque_zerado }}</strong>
+                <small>Reposição urgente</small>
+            </div>
+        </div>
+
+        <div class="ho-metric-card">
+            <div class="ho-metric-icon">⇄</div>
+            <div>
+                <span>Movimentações</span>
+                <strong>{{ contadores.movimentacoes_mes }}</strong>
+                <small>Últimos 30 dias</small>
+            </div>
+        </div>
+    </section>
+
+    <section class="ho-dashboard-grid">
+        <div class="ho-panel ho-stock-panel">
+            <div class="ho-panel-head">
+                <h2>Estoque Atual</h2>
+                <a href="{{ url_for('produtos') }}">Ver todos</a>
+            </div>
+
+            <table class="ho-stock-table">
+                <thead>
+                    <tr>
+                        <th>Produto</th>
+                        <th>Local</th>
+                        <th>Qtd.</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in produtos_criticos[:5] %}
+                    <tr>
+                        <td>{{ item.produto.nome }}</td>
+                        <td>{{ 'Farmácia Satélite' if item.produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</td>
+                        <td>{{ item.produto.quantidade_atual }}</td>
+                        <td><span class="ho-status-chip {{ item.status.tipo }}">{{ item.status.texto }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4">Nenhum produto crítico no momento.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="ho-stock-footer">
+                <div class="ho-footer-icon">▥</div>
+                <div>
+                    <strong>Controle operacional ativo.</strong>
+                    <span>Continue acompanhando os níveis mínimos do estoque.</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="ho-panel ho-moves-panel">
+            <div class="ho-panel-head">
+                <h2>Movimentações Recentes</h2>
+                <a href="{{ url_for('historico') }}">Ver todas</a>
+            </div>
+
+            <div class="ho-move-list">
+                {% for mov in transferencias_recentes[:5] if transferencias_recentes is defined %}
+                <div class="ho-move-item">
+                    <div class="ho-move-icon">⇄</div>
+                    <div>
+                        <strong>{{ mov.produto_nome }}</strong>
+                        <span>{{ 'Farmácia Satélite' if mov.estoque_origem == 'farmacia_satelite' else 'Almoxarifado' }} → {{ 'Farmácia Satélite' if mov.estoque_destino == 'farmacia_satelite' else 'Almoxarifado' }}</span>
                     </div>
+                    <small>{{ mov.quantidade }}</small>
+                </div>
+                {% else %}
+                <div class="ho-move-item">
+                    <div class="ho-move-icon">✓</div>
+                    <div>
+                        <strong>Sistema pronto</strong>
+                        <span>Nenhuma transferência recente.</span>
+                    </div>
+                    <small>Admin</small>
+                </div>
                 {% endfor %}
             </div>
-        {% else %}
-            <p class="empty-state">Sem consumo suficiente para prever estoque.</p>
-        {% endif %}
-    </div>
+        </div>
+    </section>
 
-    <div class="insight-card">
-        <div class="section-title">
-            <h2>Alertas inteligentes</h2>
-            <span>atenção operacional</span>
+    <section class="ho-institutional-footer">
+        <div class="ho-big-logo">ho.</div>
+
+        <div>
+            <strong>HOSPITAL OFTALMOLÓGICO DE FRANCA</strong>
+            <span>RT - Dr. Dante Baboni • CRM-SP 134.950</span>
         </div>
 
-        {% if alertas_inteligentes %}
-            <ul class="alert-list">
-                {% for alerta in alertas_inteligentes %}
-                    <li>{{ alerta }}</li>
-                {% endfor %}
-            </ul>
-        {% else %}
-            <p class="empty-state">Nenhum alerta crítico no momento.</p>
-        {% endif %}
-    </div>
+        <div>
+            <strong>16 3721-5919</strong>
+            <strong>16 3721-0823</strong>
+        </div>
+
+        <div>
+            <span>R. Dr. Antônio Ricardo Pinho, 1713</span>
+            <span>Vila Champagnat • Franca/SP</span>
+        </div>
+
+        <div class="ho-eye-mark">◉</div>
+    </section>
+
 </section>
 
-<section class="critical-section">
-    <div class="section-title">
-        <h2>Produtos críticos</h2>
-        <span>prioridade de conferência</span>
-    </div>
-
-    <table class="tabela-premium">
-        <thead>
-            <tr>
-                <th>Produto</th>
-                <th>Categoria</th>
-                <th>Vencimento</th>
-                <th>Estoque</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in produtos_criticos %}
-            <tr>
-                <td><strong>{{ item.produto.nome }}</strong></td>
-                <td>{{ item.produto.categoria_nome }}</td>
-                <td>{{ item.produto.data_vencimento }}</td>
-                <td>{{ item.produto.quantidade_atual }} / {{ item.produto.estoque_padrao }}</td>
-                <td><span class="badge {{ item.status.tipo }}">{{ item.status.texto }}</span></td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="5" class="sem-registro">Nenhum produto crítico encontrado.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</section>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-const graficoMovimentacoes = {{ grafico_movimentacoes|tojson }};
-const graficoEstoque = {{ grafico_estoque|tojson }};
-const graficoConsumo = {{ grafico_consumo|tojson }};
-
-const chartDefaultOptions = {
-    responsive: true,
-    plugins: {
-        legend: {
-            labels: {
-                color: "#e2e8f0"
-            }
-        }
-    },
-    scales: {
-        y: {
-            beginAtZero: true,
-            ticks: { color: "#cbd5e1" },
-            grid: { color: "rgba(148, 163, 184, .18)" }
-        },
-        x: {
-            ticks: { color: "#cbd5e1" },
-            grid: { color: "rgba(148, 163, 184, .12)" }
-        }
-    }
-};
-
-new Chart(document.getElementById("graficoMovimentacoes"), {
-    type: "doughnut",
-    data: {
-        labels: graficoMovimentacoes.labels,
-        datasets: [{
-            data: graficoMovimentacoes.dados,
-            backgroundColor: ["#22c55e", "#ef4444"],
-            borderColor: "#0f172a",
-            borderWidth: 3
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            legend: {
-                labels: { color: "#e2e8f0" }
-            }
-        }
-    }
-});
-
-new Chart(document.getElementById("graficoEstoque"), {
-    type: "bar",
-    data: {
-        labels: graficoEstoque.labels,
-        datasets: [{
-            label: "Produtos",
-            data: graficoEstoque.dados,
-            backgroundColor: ["#38bdf8", "#f59e0b", "#ef4444"],
-            borderRadius: 12
-        }]
-    },
-    options: chartDefaultOptions
-});
-
-new Chart(document.getElementById("graficoConsumo"), {
-    type: "bar",
-    data: {
-        labels: graficoConsumo.labels.length ? graficoConsumo.labels : ["Sem dados"],
-        datasets: [{
-            label: "Saídas",
-            data: graficoConsumo.dados.length ? graficoConsumo.dados : [0],
-            backgroundColor: "#8b5cf6",
-            borderRadius: 12
-        }]
-    },
-    options: chartDefaultOptions
-});
-</script>
 {% endblock %}

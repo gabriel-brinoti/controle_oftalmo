@@ -1,116 +1,169 @@
 
 {% extends "base.html" %}
 {% block conteudo %}
-<div class="page-title">
-    <div>
-        <h1>Produtos</h1>
-        <p class="subtitulo">Controle premium de validade, abertura e estoque.</p>
+
+<section class="products-premium-page">
+
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Gestão de produtos</span>
+            <h1>Produtos — {{ tipo_estoque_nome }}</h1>
+            <p>Controle operacional de estoque, validade, movimentações e transferências.</p>
+        </div>
+
+        <a class="hero-action-btn" href="{{ url_for('novo_produto') }}">+ Novo Produto</a>
     </div>
-    <a class="btn" href="{{ url_for('novo_produto') }}">+ Novo Produto</a>
-</div>
 
-<div class="filtro-card">
-    <form method="GET">
-        <div>
-            <label>Buscar</label>
-            <input
-                type="text"
-                name="busca"
-                placeholder="Nome ou lote"
-                value="{{ busca or '' }}"
-            >
-        </div>
+    <div class="stock-tabs-premium">
+        <a href="{{ url_for('produtos') }}" class="{{ 'ativo' if not tipo_estoque else '' }}">Todos</a>
+        <a href="{{ url_for('produtos', tipo_estoque='almoxarifado') }}" class="{{ 'ativo' if tipo_estoque == 'almoxarifado' else '' }}">Almoxarifado</a>
+        <a href="{{ url_for('produtos', tipo_estoque='farmacia') }}" class="{{ 'ativo' if tipo_estoque == 'farmacia_satelite' else '' }}">Farmácia Satélite</a>
+    </div>
 
-        <div>
-            <label>Categoria</label>
-            <select name="categoria_id">
-                <option value="">Todas</option>
-                {% for categoria in categorias %}
-                    <option value="{{ categoria.id }}"
-                        {% if categoria_id == categoria.id|string %}selected{% endif %}>
-                        {{ categoria.nome }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+    <section class="products-filter-premium">
+        <form method="GET">
+            <div>
+                <label>Buscar produto ou lote</label>
+                <input type="text" name="busca" value="{{ busca }}" placeholder="Digite o nome ou lote">
+            </div>
 
-        <div>
-            <label>Status</label>
-            <select name="filtro">
-                <option value="todos" {% if filtro == 'todos' %}selected{% endif %}>Todos</option>
-                <option value="vencidos" {% if filtro == 'vencidos' %}selected{% endif %}>Vencidos</option>
-                <option value="proximos" {% if filtro == 'proximos' %}selected{% endif %}>Próximos</option>
-                <option value="estoque" {% if filtro == 'estoque' %}selected{% endif %}>Estoque</option>
-            </select>
-        </div>
+            <div>
+                <label>Categoria</label>
+                <select name="categoria_id">
+                    <option value="">Todas</option>
+                    {% for categoria in categorias %}
+                        <option value="{{ categoria.id }}" {% if categoria_id and categoria_id|int == categoria.id %}selected{% endif %}>
+                            {{ categoria.nome }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
 
-        <button type="submit">Pesquisar</button>
-        <a class="btn-limpar" href="{{ url_for('produtos') }}">Limpar</a>
-    </form>
-</div>
+            <div>
+                <label>Status</label>
+                <select name="filtro">
+                    <option value="todos" {% if filtro == 'todos' %}selected{% endif %}>Todos</option>
+                    <option value="vencidos" {% if filtro == 'vencidos' %}selected{% endif %}>Vencidos</option>
+                    <option value="proximos" {% if filtro == 'proximos' %}selected{% endif %}>Próximos do vencimento</option>
+                    <option value="estoque" {% if filtro == 'estoque' %}selected{% endif %}>Estoque baixo</option>
+                </select>
+            </div>
 
-<div class="mini-resumo">
-    <strong>{{ produtos_status|length }}</strong>
-    <span>produto(s) encontrado(s)</span>
-</div>
+            <button type="submit">Filtrar</button>
+            <a class="clear-filter" href="{{ url_for('produtos') }}">Limpar</a>
+        </form>
+    </section>
 
-<table class="tabela-premium">
-    <thead>
-        <tr>
-            <th>Produto</th>
-            <th>Categoria</th>
-            <th>Lote</th>
-            <th>Vencimento</th>
-            <th>Aberto em</th>
-            <th>Vence após aberto</th>
-            <th>Estoque</th>
-            <th>Status</th>
-            <th>Movimentar</th>
-            <th>Ações</th>
-        </tr>
-    </thead>
-    <tbody>
+    <section class="products-list-premium">
         {% for item in produtos_status %}
-        <tr>
-            <td><strong>{{ item.produto.nome }}</strong></td>
-            <td>{{ item.produto.categoria_nome }}</td>
-            <td>{{ item.produto.lote or '-' }}</td>
-            <td>{{ item.produto.data_vencimento }}</td>
-            <td>{{ item.produto.data_abertura or '-' }}</td>
-            <td>{{ item.status.vencimento_apos_aberto or '-' }}</td>
-            <td>
-                <strong>{{ item.produto.quantidade_atual }}</strong>
-                <span class="estoque-total">/ {{ item.produto.estoque_padrao }}</span>
-            </td>
-            <td><span class="badge {{ item.status.tipo }}">{{ item.status.texto }}</span></td>
-            <td>
-                <div class="estoque-box">
-                    <form method="POST" action="{{ url_for('baixar_estoque', id=item.produto.id) }}">
+        <article class="product-card-premium {{ item.status.tipo }}">
+            <div class="product-main-info">
+                <div class="product-title-row">
+                    <div>
+                        <h2>{{ item.produto.nome }}</h2>
+                        <span>{{ item.produto.categoria_nome }} • {{ 'Farmácia Satélite' if item.produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</span>
+                    </div>
+
+                    <span class="status-badge-premium {{ item.status.tipo }}">{{ item.status.texto }}</span>
+                </div>
+
+                <div class="product-details-grid">
+                    <div>
+                        <span>Lote</span>
+                        <strong>{{ item.produto.lote or '-' }}</strong>
+                    </div>
+                    <div>
+                        <span>Código de Barras</span>
+                        <strong>{{ item.produto.codigo_barras or '-' }}</strong>
+                    </div>
+                    <div>
+                        <span>Vencimento</span>
+                        <strong>{{ item.produto.data_vencimento }}</strong>
+                    </div>
+                    <div>
+                        <span>Aberto em</span>
+                        <strong>{{ item.produto.data_abertura or '-' }}</strong>
+                    </div>
+                    <div>
+                        <span>Vence após aberto</span>
+                        <strong>{{ item.status.vencimento_apos_aberto or '-' }}</strong>
+                    </div>
+                </div>
+
+                <div class="stock-progress-wrap">
+                    <div class="stock-progress-header">
+                        <span>Estoque atual</span>
+                        <strong>{{ item.produto.quantidade_atual }} / {{ item.produto.estoque_padrao }}</strong>
+                    </div>
+
+                    {% set porcentagem = (item.produto.quantidade_atual / item.produto.estoque_padrao * 100) if item.produto.estoque_padrao > 0 else 0 %}
+                    {% if porcentagem > 100 %}
+                        {% set porcentagem = 100 %}
+                    {% endif %}
+
+                    <div class="stock-progress">
+                        <div style="width: {{ porcentagem }}%;"></div>
+                    </div>
+
+                    <small>Limite de alerta: {{ item.produto.limite_alerta }}</small>
+                </div>
+            </div>
+
+            <div class="product-actions-panel">
+                <div class="action-section">
+                    <span class="action-section-title">Ações rápidas</span>
+                    <div class="quick-actions-premium">
+                        <a class="pill-action edit" href="{{ url_for('editar_produto', id=item.produto.id) }}">Editar</a>
+                        <a class="pill-action history" href="{{ url_for('historico_produto', id=item.produto.id) }}">Histórico</a>
+                        <form method="POST" action="{{ url_for('excluir_produto', id=item.produto.id) }}" onsubmit="return confirm('Deseja excluir este produto?')">
+                            <button class="pill-action delete" type="submit">Excluir</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="action-section">
+                    <span class="action-section-title">Movimentações</span>
+
+                    <form class="movement-premium" method="POST" action="{{ url_for('baixar_estoque', id=item.produto.id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
-                        <input type="text" name="observacao" placeholder="Obs. opcional">
-                        <button class="btn-baixar" type="submit">Baixar</button>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="move-remove" type="submit">Retirar</button>
                     </form>
 
-                    <form method="POST" action="{{ url_for('repor_estoque', id=item.produto.id) }}">
+                    <form class="movement-premium" method="POST" action="{{ url_for('devolver_estoque', id=item.produto.id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
-                        <input type="text" name="observacao" placeholder="Obs. opcional">
-                        <button class="btn-repor" type="submit">Repor</button>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="move-return" type="submit">Devolver</button>
+                    </form>
+
+                    <form class="movement-premium transfer" method="POST" action="{{ url_for('transferir_estoque', id=item.produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <select name="destino" required>
+                            {% if item.produto.tipo_estoque == 'almoxarifado' %}
+                                <option value="farmacia_satelite">Para Farmácia</option>
+                            {% else %}
+                                <option value="almoxarifado">Para Almoxarifado</option>
+                            {% endif %}
+                        </select>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="move-transfer" type="submit">Transferir</button>
+                    </form>
+
+                    <form class="movement-premium" method="POST" action="{{ url_for('repor_estoque', id=item.produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="move-add" type="submit">Repor</button>
                     </form>
                 </div>
-            </td>
-            <td class="acoes">
-                <a href="{{ url_for('editar_produto', id=item.produto.id) }}">Editar</a>
-                <a class="btn-historico" href="{{ url_for('historico_produto', id=item.produto.id) }}">Histórico</a>
-                <form method="POST" action="{{ url_for('excluir_produto', id=item.produto.id) }}" onsubmit="return confirm('Excluir este produto?')">
-                    <button type="submit">Excluir</button>
-                </form>
-            </td>
-        </tr>
+            </div>
+        </article>
         {% else %}
-        <tr>
-            <td colspan="10" class="sem-registro">Nenhum produto encontrado.</td>
-        </tr>
+        <div class="empty-premium products-empty">
+            Nenhum produto encontrado com os filtros selecionados.
+        </div>
         {% endfor %}
-    </tbody>
-</table>
+    </section>
+
+</section>
+
 {% endblock %}

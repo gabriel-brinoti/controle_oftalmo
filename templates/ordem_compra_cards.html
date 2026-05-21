@@ -1,0 +1,73 @@
+
+<div class="purchase-items-grid">
+    {% for item in lista %}
+    <article class="purchase-item-card {{ item.nivel }}">
+        <div class="purchase-item-top">
+            <div>
+                <h3>{{ item.nome }}</h3>
+                <span>{{ item.categoria }} • Lote {{ item.lote }}</span>
+            </div>
+
+            <span class="purchase-status {{ item.nivel }}">{{ item.status }}</span>
+        </div>
+
+        <div class="purchase-numbers">
+            <div>
+                <span>Atual</span>
+                <strong>{{ item.quantidade_atual }}</strong>
+            </div>
+
+            <div>
+                <span>Mínimo</span>
+                <strong>{{ item.limite_alerta }}</strong>
+            </div>
+
+            <div>
+                <span>Padrão</span>
+                <strong>{{ item.estoque_padrao }}</strong>
+            </div>
+
+            <div class="suggestion-box">
+                <span>Sugerido</span>
+                <strong>{{ item.sugestao }}</strong>
+            </div>
+        </div>
+
+        <div class="purchase-progress-wrap">
+            {% set porcentagem = (item.quantidade_atual / item.estoque_padrao * 100) if item.estoque_padrao > 0 else 0 %}
+            {% if porcentagem > 100 %}
+                {% set porcentagem = 100 %}
+            {% endif %}
+
+            <div class="purchase-progress">
+                <div style="width: {{ porcentagem }}%;"></div>
+            </div>
+
+            <small>Reposição sugerida com base no estoque padrão.</small>
+        </div>
+
+        <div class="purchase-decision">
+            {% if item.sugestao_transferencia %}
+                <div class="decision-card transfer">
+                    <span>Ação sugerida</span>
+                    <strong>Transferir antes de comprar</strong>
+                    <small>
+                        Transferir {{ item.sugestao_transferencia.quantidade }}
+                        de {{ item.sugestao_transferencia.origem_nome }}
+                    </small>
+                </div>
+            {% else %}
+                <div class="decision-card buy">
+                    <span>Ação sugerida</span>
+                    <strong>Comprar</strong>
+                    <small>Não há saldo disponível no outro estoque.</small>
+                </div>
+            {% endif %}
+        </div>
+    </article>
+    {% else %}
+    <div class="empty-premium purchase-empty">
+        Nenhum item precisa de compra neste estoque.
+    </div>
+    {% endfor %}
+</div>

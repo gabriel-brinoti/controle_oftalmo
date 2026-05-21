@@ -1,0 +1,133 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="license-page">
+
+    <div class="license-hero">
+        <div>
+            <span class="dash-eyebrow">Assinatura mensal</span>
+            <h1>Licenciamento do Sistema</h1>
+            <p>Controle a validade da assinatura, status da licença e renovação mensal do cliente.</p>
+        </div>
+
+        <div class="license-status-card {{ info.situacao }}">
+            <span>Status</span>
+            <strong>
+                {% if info.situacao == 'ativa' %}
+                    Ativa
+                {% elif info.situacao == 'vencida_limitada' %}
+                    Limitada
+                {% else %}
+                    Bloqueada
+                {% endif %}
+            </strong>
+            <small>{{ info.mensagem }}</small>
+        </div>
+    </div>
+
+    {% if info.licenca %}
+    <section class="license-summary-grid">
+        <div class="license-summary-card">
+            <span>Empresa</span>
+            <strong>{{ info.licenca.empresa }}</strong>
+        </div>
+
+        <div class="license-summary-card">
+            <span>Plano</span>
+            <strong>{{ info.licenca.plano }}</strong>
+        </div>
+
+        <div class="license-summary-card">
+            <span>Vencimento</span>
+            <strong>{{ info.licenca.data_vencimento }}</strong>
+        </div>
+
+        <div class="license-summary-card">
+            <span>Dias restantes</span>
+            <strong>{{ info.dias_restantes }}</strong>
+        </div>
+
+        <div class="license-summary-card key">
+            <span>Chave</span>
+            <strong>{{ info.licenca.chave_licenca or '-' }}</strong>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="license-grid">
+
+        <div class="license-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Renovação</span>
+                    <h2>Atualizar licença mensal</h2>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('renovar_licenca') }}" class="license-form">
+                <label>Empresa</label>
+                <input type="text" name="empresa" value="{{ info.licenca.empresa if info.licenca else 'Cliente Atual' }}">
+
+                <label>Plano</label>
+                <input type="text" name="plano" value="{{ info.licenca.plano if info.licenca else 'Premium Mensal' }}">
+
+                <label>Chave da licença</label>
+                <input type="text" name="chave_licenca" value="{{ info.licenca.chave_licenca if info.licenca else 'LICENCA-LOCAL' }}">
+
+                <label>Data de vencimento</label>
+                <input type="date" name="data_vencimento" value="{{ info.licenca.data_vencimento if info.licenca else '' }}" required>
+
+                <label>Dias de carência</label>
+                <input type="number" name="dias_carencia" value="{{ info.licenca.dias_carencia if info.licenca else 5 }}" min="0">
+
+                <label>Observações</label>
+                <textarea name="observacoes" rows="3">{{ info.licenca.observacoes if info.licenca else '' }}</textarea>
+
+                <button type="submit">Renovar licença</button>
+            </form>
+        </div>
+
+        <div class="license-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Controle</span>
+                    <h2>Ações da licença</h2>
+                </div>
+            </div>
+
+            <div class="license-actions">
+                <form method="POST" action="{{ url_for('ativar_licenca') }}">
+                    <button type="submit" class="activate">Ativar licença</button>
+                </form>
+
+                <form method="POST" action="{{ url_for('bloquear_licenca') }}" onsubmit="return confirm('Deseja bloquear a licença deste cliente?')">
+                    <button type="submit" class="block">Bloquear licença</button>
+                </form>
+            </div>
+
+            <div class="license-rules">
+                <h3>Regras atuais</h3>
+
+                <div>
+                    <strong>Licença ativa</strong>
+                    <span>Sistema liberado normalmente.</span>
+                </div>
+
+                <div>
+                    <strong>Licença vencida em carência</strong>
+                    <span>Sistema entra em modo consulta e bloqueia alterações.</span>
+                </div>
+
+                <div>
+                    <strong>Licença bloqueada</strong>
+                    <span>Acesso é interrompido até renovação/ativação.</span>
+                </div>
+            </div>
+        </div>
+
+    </section>
+
+</section>
+
+{% endblock %}

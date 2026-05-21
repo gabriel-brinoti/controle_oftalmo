@@ -1,0 +1,26 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Licença bloqueada</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="license-blocked-body">
+    <main class="license-blocked-card">
+        <span>Licenciamento</span>
+        <h1>Sistema temporariamente bloqueado</h1>
+        <p>{{ info_licenca.mensagem }}</p>
+
+        {% if info_licenca.licenca %}
+        <div>
+            <strong>Empresa:</strong> {{ info_licenca.licenca.empresa }}<br>
+            <strong>Plano:</strong> {{ info_licenca.licenca.plano }}<br>
+            <strong>Vencimento:</strong> {{ info_licenca.licenca.data_vencimento }}
+        </div>
+        {% endif %}
+
+        <a href="{{ url_for('logout') }}">Voltar ao login</a>
+    </main>
+</body>
+</html>

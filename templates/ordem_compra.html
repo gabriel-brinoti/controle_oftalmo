@@ -1,0 +1,102 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="purchase-premium-page">
+
+    <div class="purchase-hero">
+        <div>
+            <span class="dash-eyebrow">Central logística</span>
+            <h1>Ordem de Compra Premium</h1>
+            <p>Sugestão inteligente de reposição, separada por estoque e prioridade operacional.</p>
+        </div>
+
+        <div class="purchase-actions">
+            <a href="{{ url_for('exportar_ordem_compra', formato='xlsx', tipo_estoque=tipo_estoque) }}">Exportar Excel</a>
+            <a href="{{ url_for('exportar_ordem_compra', formato='pdf', tipo_estoque=tipo_estoque) }}">Exportar PDF</a>
+        </div>
+    </div>
+
+    <section class="purchase-metrics-grid">
+        <div class="purchase-metric-card">
+            <span>Itens na ordem</span>
+            <strong>{{ itens|length }}</strong>
+            <small>Itens abaixo do limite</small>
+        </div>
+
+        <div class="purchase-metric-card danger">
+            <span>Itens críticos</span>
+            <strong>{{ total_critico }}</strong>
+            <small>Produtos zerados</small>
+        </div>
+
+        <div class="purchase-metric-card success">
+            <span>Total sugerido</span>
+            <strong>{{ total_sugerido }}</strong>
+            <small>Unidades para reposição</small>
+        </div>
+
+        <div class="purchase-metric-card info">
+            <span>Filtro atual</span>
+            <strong>
+                {% if tipo_estoque == 'almoxarifado' %}
+                    Almox
+                {% elif tipo_estoque == 'farmacia_satelite' %}
+                    Farmácia
+                {% else %}
+                    Geral
+                {% endif %}
+            </strong>
+            <small>Visualização da ordem</small>
+        </div>
+    </section>
+
+    <section class="purchase-filter-panel">
+        <form method="GET">
+            <div>
+                <label>Estoque</label>
+                <select name="tipo_estoque">
+                    <option value="" {% if not tipo_estoque %}selected{% endif %}>Todos os estoques</option>
+                    <option value="almoxarifado" {% if tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
+                    <option value="farmacia_satelite" {% if tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+                </select>
+            </div>
+
+            <button type="submit">Aplicar filtro</button>
+            <a href="{{ url_for('ordem_compra') }}">Limpar</a>
+        </form>
+    </section>
+
+    {% if not tipo_estoque or tipo_estoque == 'almoxarifado' %}
+    <section class="purchase-stock-section">
+        <div class="purchase-section-heading">
+            <div>
+                <span>Estoque principal</span>
+                <h2>Almoxarifado</h2>
+            </div>
+            <strong>{{ separados.almoxarifado|length }} item(ns)</strong>
+        </div>
+
+        {% set lista = separados.almoxarifado %}
+        {% include "ordem_compra_cards.html" %}
+    </section>
+    {% endif %}
+
+    {% if not tipo_estoque or tipo_estoque == 'farmacia_satelite' %}
+    <section class="purchase-stock-section">
+        <div class="purchase-section-heading">
+            <div>
+                <span>Estoque operacional</span>
+                <h2>Farmácia Satélite</h2>
+            </div>
+            <strong>{{ separados.farmacia_satelite|length }} item(ns)</strong>
+        </div>
+
+        {% set lista = separados.farmacia_satelite %}
+        {% include "ordem_compra_cards.html" %}
+    </section>
+    {% endif %}
+
+</section>
+
+{% endblock %}
