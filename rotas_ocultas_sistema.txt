@@ -1,0 +1,37 @@
+ROTAS INTERNAS / OCULTAS DO SISTEMA
+
+PAINEL LICENÇA
+/painel_master_licenca_8472
+
+PAINEL BACKUP
+/painel_master_backup_9182
+
+RESET SISTEMA
+/painel_master_reset_7319
+
+TESTE BACKUP SUPABASE
+/backup/testar_supabase
+
+BACKUP MANUAL
+/backup/manual
+
+
+EXEMPLO LOCALHOST:
+
+http://127.0.0.1:5000/painel_master_licenca_8472
+http://127.0.0.1:5000/painel_master_backup_9182
+http://127.0.0.1:5000/painel_master_reset_7319
+
+
+EXEMPLO RENDER:
+
+https://SEU-SISTEMA.onrender.com/painel_master_licenca_8472
+https://SEU-SISTEMA.onrender.com/painel_master_backup_9182
+https://SEU-SISTEMA.onrender.com/painel_master_reset_7319
+
+
+IMPORTANTE:
+- Essas rotas NÃO aparecem no menu.
+- Elas ainda existem online.
+- Protegidas por login + admin.
+- Recomenda-se remover a rota RESET após implantação final.

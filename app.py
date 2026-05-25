@@ -3420,6 +3420,41 @@ def alterar_senha():
     flash("Senha alterada com sucesso.", "sucesso")
     return redirect(url_for("configuracoes"))
 
+@app.route("/painel_master_reset_7319", methods=["GET", "POST"])
+@login_obrigatorio
+@admin_obrigatorio
+def reset_sistema():
+    if request.method == "POST":
+        conn = conectar()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM movimentacoes")
+        cursor.execute("DELETE FROM historico_alertas")
+        cursor.execute("DELETE FROM produtos")
+        cursor.execute("DELETE FROM categorias")
+        cursor.execute("DELETE FROM auditoria_scanner")
+
+        cursor.execute("ALTER SEQUENCE produtos_id_seq RESTART WITH 1")
+        cursor.execute("ALTER SEQUENCE movimentacoes_id_seq RESTART WITH 1")
+        cursor.execute("ALTER SEQUENCE categorias_id_seq RESTART WITH 1")
+        cursor.execute("ALTER SEQUENCE historico_alertas_id_seq RESTART WITH 1")
+        cursor.execute("ALTER SEQUENCE auditoria_scanner_id_seq RESTART WITH 1")
+
+        conn.commit()
+        conn.close()
+
+        flash("Sistema zerado com sucesso.", "sucesso")
+        return redirect(url_for("dashboard"))
+
+    return """
+    <h1>Zerar sistema</h1>
+    <p>Isso vai apagar produtos, categorias, movimentações e histórico de alertas.</p>
+    <form method="POST">
+        <button type="submit" onclick="return confirm('Tem certeza que deseja zerar o sistema?')">
+            Zerar sistema
+        </button>
+    </form>
+    """
 
 # Inicialização do banco para ambiente local e deploy
 criar_banco()
