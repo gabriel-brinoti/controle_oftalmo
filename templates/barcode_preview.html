@@ -1,0 +1,113 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="barcode-page">
+
+    <div class="barcode-hero">
+        <div>
+            <span class="dash-eyebrow">Operação inteligente</span>
+            <h1>Leitor de Código de Barras</h1>
+            <p>Bipe o produto para localizar automaticamente e agilizar movimentações.</p>
+        </div>
+
+        <div class="barcode-status">
+            <span>Scanner conectado</span>
+            <strong>Pronto para leitura</strong>
+        </div>
+    </div>
+
+    <section class="barcode-layout">
+
+        <div class="barcode-panel scanner-panel">
+
+            <div class="scanner-box">
+                <div class="scanner-animation"></div>
+
+                <label>Código do produto</label>
+
+                <input type="text"
+                       placeholder="Bipe ou digite o código..."
+                       value="7891029384756">
+
+                <button>Buscar produto</button>
+            </div>
+
+            <div class="barcode-tips">
+                <h3>Como funciona</h3>
+
+                <div class="tip-card">
+                    <strong>1. Bipar</strong>
+                    <span>O leitor envia o código automaticamente.</span>
+                </div>
+
+                <div class="tip-card">
+                    <strong>2. Localizar</strong>
+                    <span>O sistema encontra o produto sem digitação.</span>
+                </div>
+
+                <div class="tip-card">
+                    <strong>3. Movimentar</strong>
+                    <span>Retire, transfira ou reponha rapidamente.</span>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="barcode-panel product-panel">
+
+            <div class="product-found-card">
+
+                <div class="product-top">
+                    <div>
+                        <span class="product-badge">Produto encontrado</span>
+                        <h2>Colírio Lubrificante</h2>
+                        <small>Lote 2026-A • Oftálmicos</small>
+                    </div>
+
+                    <div class="barcode-visual">
+                        ||| || |||| |||
+                    </div>
+                </div>
+
+                <div class="product-info-grid">
+
+                    <div>
+                        <span>Estoque atual</span>
+                        <strong>12</strong>
+                    </div>
+
+                    <div>
+                        <span>Mínimo</span>
+                        <strong>5</strong>
+                    </div>
+
+                    <div>
+                        <span>Validade</span>
+                        <strong>12/2026</strong>
+                    </div>
+
+                    <div>
+                        <span>Status</span>
+                        <strong>Normal</strong>
+                    </div>
+
+                </div>
+
+                <div class="movement-actions">
+
+                    <button class="retirada">Retirar</button>
+                    <button class="reposicao">Repor</button>
+                    <button class="transferencia">Transferir</button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+</section>
+
+{% endblock %}

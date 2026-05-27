@@ -1,0 +1,110 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="categories-premium-page">
+
+    <div class="categories-hero">
+        <div>
+            <span class="dash-eyebrow">Organização do estoque</span>
+            <h1>Central de Categorias</h1>
+            <p>Visualize, organize e acompanhe os grupos de produtos do estoque da clínica.</p>
+        </div>
+
+        <a class="category-new-btn" href="{{ url_for('nova_categoria') }}">+ Nova Categoria</a>
+    </div>
+
+    <section class="categories-overview-grid">
+        <div class="category-overview-card">
+            <span>Categorias</span>
+            <strong>{{ categorias|length }}</strong>
+            <small>Grupos cadastrados</small>
+        </div>
+
+        <div class="category-overview-card success">
+            <span>Produtos vinculados</span>
+            <strong>{{ categorias|sum(attribute='total_produtos') }}</strong>
+            <small>Total de produtos</small>
+        </div>
+
+        <div class="category-overview-card warning">
+            <span>Estoque baixo</span>
+            <strong>{{ categorias|sum(attribute='estoque_baixo') }}</strong>
+            <small>Itens em alerta</small>
+        </div>
+
+        <div class="category-overview-card danger">
+            <span>Vencidos</span>
+            <strong>{{ categorias|sum(attribute='vencidos') }}</strong>
+            <small>Produtos vencidos</small>
+        </div>
+    </section>
+
+    <section class="categories-grid">
+        {% for categoria in categorias %}
+        <article class="category-card-premium">
+            <div class="category-card-header">
+                <div class="category-icon">
+                    {{ categoria.nome[:1]|upper }}
+                </div>
+
+                <div>
+                    <h2>{{ categoria.nome }}</h2>
+                    <span>Categoria de estoque</span>
+                </div>
+            </div>
+
+            <div class="category-stats-grid">
+                <div>
+                    <span>Produtos</span>
+                    <strong>{{ categoria.total_produtos }}</strong>
+                </div>
+
+                <div>
+                    <span>Estoque</span>
+                    <strong>{{ categoria.estoque_total }}</strong>
+                </div>
+
+                <div>
+                    <span>Baixo</span>
+                    <strong>{{ categoria.estoque_baixo }}</strong>
+                </div>
+
+                <div>
+                    <span>Vencendo</span>
+                    <strong>{{ categoria.vencendo }}</strong>
+                </div>
+            </div>
+
+            {% if categoria.vencidos > 0 %}
+                <div class="category-alert danger">
+                    {{ categoria.vencidos }} produto(s) vencido(s)
+                </div>
+            {% elif categoria.estoque_baixo > 0 or categoria.vencendo > 0 %}
+                <div class="category-alert warning">
+                    Categoria precisa de atenção
+                </div>
+            {% else %}
+                <div class="category-alert success">
+                    Categoria estável
+                </div>
+            {% endif %}
+
+            <div class="category-actions-premium">
+                <a class="edit" href="{{ url_for('editar_categoria', id=categoria.id) }}">Editar</a>
+                <a class="view" href="{{ url_for('produtos', categoria_id=categoria.id) }}">Ver produtos</a>
+                <form method="POST" action="{{ url_for('excluir_categoria', id=categoria.id) }}" onsubmit="return confirm('Deseja excluir esta categoria?')">
+                    <button type="submit">Excluir</button>
+                </form>
+            </div>
+        </article>
+        {% else %}
+        <div class="empty-premium categories-empty">
+            Nenhuma categoria cadastrada ainda.
+        </div>
+        {% endfor %}
+    </section>
+
+</section>
+
+{% endblock %}

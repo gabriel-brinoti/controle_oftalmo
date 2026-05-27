@@ -1,0 +1,218 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="reports-premium-page">
+
+    <div class="reports-hero">
+        <div>
+            <span class="dash-eyebrow">Relatórios analíticos</span>
+            <h1>Relatórios Premium</h1>
+            <p>Análise operacional, consumo, estoque crítico e movimentações da clínica.</p>
+        </div>
+
+        <div class="reports-export-buttons">
+            <a href="{{ url_for('exportar_relatorio', tipo_relatorio='produtos', formato='xlsx') }}">Exportar Excel</a>
+            <a href="{{ url_for('exportar_relatorio', tipo_relatorio='produtos', formato='pdf') }}">Exportar PDF</a>
+        </div>
+    </div>
+
+    <section class="reports-metrics-grid">
+        <div class="report-metric-card primary">
+            <span>Total produtos</span>
+            <strong>{{ relatorio.total_produtos }}</strong>
+            <small>Itens cadastrados</small>
+        </div>
+
+        <div class="report-metric-card warning">
+            <span>Estoque baixo</span>
+            <strong>{{ relatorio.estoque_baixo }}</strong>
+            <small>Precisam reposição</small>
+        </div>
+
+        <div class="report-metric-card danger">
+            <span>Vencidos</span>
+            <strong>{{ relatorio.vencidos }}</strong>
+            <small>Produtos vencidos</small>
+        </div>
+
+        <div class="report-metric-card info">
+            <span>Vencendo</span>
+            <strong>{{ relatorio.proximos_vencimento }}</strong>
+            <small>Próximos 5 dias</small>
+        </div>
+
+        <div class="report-metric-card success">
+            <span>Entradas</span>
+            <strong>{{ relatorio.total_entradas }}</strong>
+            <small>Últimos 30 dias</small>
+        </div>
+
+        <div class="report-metric-card alert">
+            <span>Saídas</span>
+            <strong>{{ relatorio.total_saidas }}</strong>
+            <small>Últimos 30 dias</small>
+        </div>
+    </section>
+
+    <section class="reports-grid-layout">
+
+        <div class="report-panel large">
+            <div class="panel-heading">
+                <div>
+                    <span>Estoque</span>
+                    <h2>Produtos críticos</h2>
+                </div>
+            </div>
+
+            <div class="critical-products-report">
+                {% for item in relatorio.criticos %}
+                <div class="critical-product-card {{ item.status }}">
+                    <div>
+                        <strong>{{ item.nome }}</strong>
+                        <span>{{ item.categoria }}</span>
+                    </div>
+
+                    <div class="critical-meta">
+                        <b>{{ item.quantidade }} un.</b>
+                        <small>{{ item.tipo }}</small>
+                    </div>
+                </div>
+                {% else %}
+                <div class="empty-premium">
+                    Nenhum produto crítico encontrado.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="report-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Movimentação</span>
+                    <h2>Resumo operacional</h2>
+                </div>
+            </div>
+
+            <div class="operation-summary">
+                <div class="summary-item">
+                    <span>Reposições</span>
+                    <strong>{{ relatorio.reposicoes }}</strong>
+                </div>
+
+                <div class="summary-item">
+                    <span>Transferências</span>
+                    <strong>{{ relatorio.transferencias }}</strong>
+                </div>
+
+                <div class="summary-item">
+                    <span>Devoluções</span>
+                    <strong>{{ relatorio.devolucoes }}</strong>
+                </div>
+
+                <div class="summary-item">
+                    <span>Retiradas</span>
+                    <strong>{{ relatorio.retiradas }}</strong>
+                </div>
+            </div>
+        </div>
+
+    </section>
+
+    <section class="reports-grid-layout">
+
+        <div class="report-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Consumo</span>
+                    <h2>Produtos mais utilizados</h2>
+                </div>
+            </div>
+
+            <div class="ranking-report">
+                {% for item in relatorio.top_consumo %}
+                <div class="ranking-report-row">
+                    <span>{{ loop.index }}</span>
+                    <strong>{{ item.nome }}</strong>
+                    <b>{{ item.total }}</b>
+                </div>
+                {% else %}
+                <div class="empty-premium">
+                    Sem dados de consumo.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="report-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Validade</span>
+                    <h2>Produtos vencendo</h2>
+                </div>
+            </div>
+
+            <div class="expiration-list">
+                {% for item in relatorio.vencendo %}
+                <div class="expiration-item">
+                    <div>
+                        <strong>{{ item.nome }}</strong>
+                        <span>{{ item.data }}</span>
+                    </div>
+
+                    <b>{{ item.dias }} dia(s)</b>
+                </div>
+                {% else %}
+                <div class="empty-premium">
+                    Nenhum produto próximo do vencimento.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </section>
+
+    <section class="report-panel full">
+        <div class="panel-heading">
+            <div>
+                <span>Histórico</span>
+                <h2>Últimas movimentações</h2>
+            </div>
+        </div>
+
+        <div class="table-card-premium">
+            <table class="tabela-premium compact-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Produto</th>
+                        <th>Tipo</th>
+                        <th>Quantidade</th>
+                        <th>Estoque</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for mov in relatorio.movimentacoes %}
+                    <tr>
+                        <td>{{ mov.data }}</td>
+                        <td><strong>{{ mov.produto }}</strong></td>
+                        <td>{{ mov.tipo }}</td>
+                        <td>{{ mov.quantidade }}</td>
+                        <td>{{ mov.estoque }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="sem-registro">
+                            Nenhuma movimentação encontrada.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</section>
+
+{% endblock %}

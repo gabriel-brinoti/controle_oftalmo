@@ -1,0 +1,47 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="user-form-page">
+    <div class="user-form-card">
+        <span class="dash-eyebrow">Controle de acesso</span>
+        <h1>{{ titulo }}</h1>
+        <p>Defina o usuário, senha e nível de acesso ao sistema.</p>
+
+        <form method="POST">
+            <label>Nome</label>
+            <input type="text" name="nome" value="{{ usuario.nome if usuario else '' }}" required>
+
+            {% if usuario %}
+                <label>Usuário</label>
+                <input type="text" value="{{ usuario.usuario }}" disabled>
+            {% else %}
+                <label>Usuário de login</label>
+                <input type="text" name="usuario" placeholder="Ex: maria, estoque, farmacia" required>
+            {% endif %}
+
+            <label>Perfil</label>
+            <select name="perfil" required>
+                <option value="admin" {% if usuario and usuario.perfil == 'admin' %}selected{% endif %}>Sala Central / Admin</option>
+                <option value="estoque" {% if usuario and usuario.perfil == 'estoque' %}selected{% endif %}>Estoque / Farmácia / Almoxarifado</option>
+            </select>
+
+            <label>{% if usuario %}Nova senha{% else %}Senha{% endif %}</label>
+            <input type="password" name="senha" {% if not usuario %}required{% endif %} placeholder="{% if usuario %}Preencha apenas se quiser alterar{% else %}Digite a senha{% endif %}">
+
+            {% if usuario %}
+            <label class="checkbox-user">
+                <input type="checkbox" name="ativo" {% if usuario.ativo %}checked{% endif %}>
+                Usuário ativo
+            </label>
+            {% endif %}
+
+            <div class="user-form-actions">
+                <button type="submit">Salvar</button>
+                <a href="{{ url_for('usuarios') }}">Voltar</a>
+            </div>
+        </form>
+    </div>
+</section>
+
+{% endblock %}

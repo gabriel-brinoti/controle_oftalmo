@@ -1,0 +1,144 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="ho-dashboard">
+
+    <div class="ho-welcome">
+        <h1>Olá, Admin!</h1>
+        <p>Bem-vindo ao sistema de Controle de Estoque Oftalmológico.</p>
+    </div>
+
+    <section class="ho-metrics">
+        <div class="ho-metric-card">
+            <div class="ho-metric-icon">▣</div>
+            <div>
+                <span>Total de itens</span>
+                <strong>{{ contadores.total }}</strong>
+                <small>Produtos cadastrados</small>
+            </div>
+        </div>
+
+        <div class="ho-metric-card">
+            <div class="ho-metric-icon">✓</div>
+            <div>
+                <span>Estoque baixo</span>
+                <strong>{{ contadores.estoque_baixo }}</strong>
+                <small>Requer atenção</small>
+            </div>
+        </div>
+
+        <div class="ho-metric-card danger">
+            <div class="ho-metric-icon">!</div>
+            <div>
+                <span>Itens zerados</span>
+                <strong>{{ contadores.estoque_zerado }}</strong>
+                <small>Reposição urgente</small>
+            </div>
+        </div>
+
+        <div class="ho-metric-card">
+            <div class="ho-metric-icon">⇄</div>
+            <div>
+                <span>Movimentações</span>
+                <strong>{{ contadores.movimentacoes_mes }}</strong>
+                <small>Últimos 30 dias</small>
+            </div>
+        </div>
+    </section>
+
+    <section class="ho-dashboard-grid">
+        <div class="ho-panel ho-stock-panel">
+            <div class="ho-panel-head">
+                <h2>Estoque Atual</h2>
+                <a href="{{ url_for('produtos') }}">Ver todos</a>
+            </div>
+
+            <table class="ho-stock-table">
+                <thead>
+                    <tr>
+                        <th>Produto</th>
+                        <th>Local</th>
+                        <th>Qtd.</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in produtos_criticos[:5] %}
+                    <tr>
+                        <td>{{ item.produto.nome }}</td>
+                        <td>{{ 'Farmácia Satélite' if item.produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</td>
+                        <td>{{ item.produto.quantidade_atual }}</td>
+                        <td><span class="ho-status-chip {{ item.status.tipo }}">{{ item.status.texto }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4">Nenhum produto crítico no momento.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="ho-stock-footer">
+                <div class="ho-footer-icon">▥</div>
+                <div>
+                    <strong>Controle operacional ativo.</strong>
+                    <span>Continue acompanhando os níveis mínimos do estoque.</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="ho-panel ho-moves-panel">
+            <div class="ho-panel-head">
+                <h2>Movimentações Recentes</h2>
+                <a href="{{ url_for('historico') }}">Ver todas</a>
+            </div>
+
+            <div class="ho-move-list">
+                {% for mov in transferencias_recentes[:5] if transferencias_recentes is defined %}
+                <div class="ho-move-item">
+                    <div class="ho-move-icon">⇄</div>
+                    <div>
+                        <strong>{{ mov.produto_nome }}</strong>
+                        <span>{{ 'Farmácia Satélite' if mov.estoque_origem == 'farmacia_satelite' else 'Almoxarifado' }} → {{ 'Farmácia Satélite' if mov.estoque_destino == 'farmacia_satelite' else 'Almoxarifado' }}</span>
+                    </div>
+                    <small>{{ mov.quantidade }}</small>
+                </div>
+                {% else %}
+                <div class="ho-move-item">
+                    <div class="ho-move-icon">✓</div>
+                    <div>
+                        <strong>Sistema pronto</strong>
+                        <span>Nenhuma transferência recente.</span>
+                    </div>
+                    <small>Admin</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="ho-institutional-footer">
+        <div class="ho-big-logo">ho.</div>
+
+        <div>
+            <strong>HOSPITAL OFTALMOLÓGICO DE FRANCA</strong>
+            <span>RT - Dr. Dante Baboni • CRM-SP 134.950</span>
+        </div>
+
+        <div>
+            <strong>16 3721-5919</strong>
+            <strong>16 3721-0823</strong>
+        </div>
+
+        <div>
+            <span>R. Dr. Antônio Ricardo Pinho, 1713</span>
+            <span>Vila Champagnat • Franca/SP</span>
+        </div>
+
+        <div class="ho-eye-mark">◉</div>
+    </section>
+
+</section>
+
+{% endblock %}

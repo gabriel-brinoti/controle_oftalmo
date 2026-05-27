@@ -1,0 +1,55 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="users-premium-page">
+
+    <div class="users-hero">
+        <div>
+            <span class="dash-eyebrow">Controle hospitalar</span>
+            <h1>Usuários e Permissões</h1>
+            <p>Gerencie acessos individuais da Sala Central, Almoxarifado e Farmácia.</p>
+        </div>
+
+        <a class="user-new-btn" href="{{ url_for('novo_usuario') }}">+ Novo Usuário</a>
+    </div>
+
+    <section class="users-grid">
+        {% for usuario in usuarios %}
+        <article class="user-card-premium">
+            <div>
+                <span class="user-role {{ usuario.perfil }}">{{ usuario.perfil|title }}</span>
+                <h2>{{ usuario.nome }}</h2>
+                <p>@{{ usuario.usuario }}</p>
+            </div>
+
+            <div class="user-meta">
+                <div>
+                    <span>Status</span>
+                    <strong>{{ 'Ativo' if usuario.ativo else 'Inativo' }}</strong>
+                </div>
+
+                <div>
+                    <span>Criado em</span>
+                    <strong>{{ usuario.criado_em }}</strong>
+                </div>
+            </div>
+
+            <div class="user-actions">
+                <a href="{{ url_for('editar_usuario', id=usuario.id) }}">Editar</a>
+
+                {% if usuario.usuario != 'admin' %}
+                <form method="POST" action="{{ url_for('desativar_usuario', id=usuario.id) }}" onsubmit="return confirm('Deseja desativar este usuário?')">
+                    <button type="submit">Desativar</button>
+                </form>
+                {% endif %}
+            </div>
+        </article>
+        {% else %}
+        <div class="empty-premium">Nenhum usuário cadastrado.</div>
+        {% endfor %}
+    </section>
+
+</section>
+
+{% endblock %}

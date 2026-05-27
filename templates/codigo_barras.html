@@ -1,0 +1,380 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="scanner-operacional-page">
+
+    <div class="scanner-hero">
+        <div>
+            <span class="dash-eyebrow">Scanner operacional</span>
+            <h1>Leitor de Código de Barras</h1>
+            <p>Bipe o produto para localizar ou ative o modo contínuo para baixar várias unidades em sequência.</p>
+        </div>
+
+        <div class="scanner-mode-card">
+            <span>Modo atual</span>
+            <strong>{{ 'Contínuo' if request.args.get('modo') == 'continuo' else 'Consulta' }}</strong>
+        </div>
+    </div>
+
+    <section class="scanner-mode-tabs">
+        <a href="{{ url_for('codigo_barras') }}" class="{{ 'ativo' if request.args.get('modo') != 'continuo' else '' }}">Modo Consulta</a>
+        <a href="{{ url_for('codigo_barras', modo='continuo') }}" class="{{ 'ativo' if request.args.get('modo') == 'continuo' else '' }}">Modo Contínuo</a>
+    </section>
+
+    {% if request.args.get('modo') == 'continuo' %}
+
+    <section class="continuous-scanner-grid scanner-stage4-grid">
+
+        <div class="scanner-panel continuous-panel">
+            <form id="continuousScannerForm" method="POST" action="{{ url_for('scanner_baixa_rapida') }}" class="scanner-form">
+                <div class="scanner-visual continuous">
+                    <div class="scanner-line"></div>
+                </div>
+
+                <label for="continuousScannerInput">Bipagem contínua</label>
+                <input
+                    id="continuousScannerInput"
+                    name="codigo"
+                    type="text"
+                    placeholder="Bipe para baixar automaticamente..."
+                    autocomplete="off"
+                    autofocus
+                >
+
+                <div class="continuous-settings">
+                    <div>
+                        <label>Quantidade por bip</label>
+                        <input type="number" name="quantidade" value="1" min="1" required>
+                    </div>
+
+                    <div>
+                        <label>Observação padrão</label>
+                        <input type="text" name="observacao" value="Baixa por scanner">
+                    </div>
+                </div>
+
+                <button type="submit">Baixar agora</button>
+
+                <small class="scanner-help">
+                    Neste modo, cada bip com Enter faz uma retirada automática da quantidade definida.
+                </small>
+            </form>
+        </div>
+
+        <div class="scanner-panel continuous-status-panel">
+            <div class="continuous-status">
+                <div class="continuous-icon">↯</div>
+                <h2>Modo contínuo ativo</h2>
+                <p>Ideal para retirada rápida de vários produtos. Após cada leitura, o sistema baixa o estoque e volta para esta tela.</p>
+
+                <div class="continuous-info-grid">
+                    <div>
+                        <span>Ação</span>
+                        <strong>Retirada</strong>
+                    </div>
+
+                    <div>
+                        <span>Confirmação</span>
+                        <strong>Automática</strong>
+                    </div>
+
+                    <div>
+                        <span>Próximo bip</span>
+                        <strong>Liberado</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="scanner-panel scanner-audit-panel">
+            <div class="scanner-live-head">
+                <div>
+                    <span>Auditoria operacional</span>
+                    <h2>Rastreabilidade do scanner</h2>
+                </div>
+                <strong class="live-status success">Ativa</strong>
+            </div>
+
+            <div class="audit-list">
+                {% for item in auditoria_scanner %}
+                <div class="audit-item {{ item.status }}">
+                    <div>
+                        <strong>{{ item.produto_nome or 'Produto não encontrado' }}</strong>
+                        <span>{{ item.usuario }} • {{ item.ip_origem }}</span>
+                        <small>{{ item.criado_em }} • {{ item.detalhe }}</small>
+                    </div>
+                    <b>{{ item.status }}</b>
+                </div>
+                {% else %}
+                <div class="scanner-live-empty">
+                    Nenhum registro de auditoria do scanner ainda.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="scanner-panel scanner-live-panel">
+            <div class="scanner-live-head">
+                <div>
+                    <span>Painel operacional</span>
+                    <h2>Operação ao vivo</h2>
+                </div>
+
+                {% if request.args.get('scanner_status') == 'sucesso' %}
+                    <strong class="live-status success">Última leitura OK</strong>
+                {% else %}
+                    <strong class="live-status">Aguardando bipagem</strong>
+                {% endif %}
+            </div>
+
+            <div class="scanner-live-metrics">
+                <div>
+                    <span>Bipagens recentes</span>
+                    <strong>{{ total_bipagens or 0 }}</strong>
+                </div>
+
+                <div>
+                    <span>Unidades baixadas</span>
+                    <strong>{{ total_unidades or 0 }}</strong>
+                </div>
+
+                <div>
+                    <span>Estoque baixo</span>
+                    <strong>{{ estoque_baixo_scanner or 0 }}</strong>
+                </div>
+            </div>
+
+            <div class="scanner-live-list">
+                <h3>Últimos produtos bipados</h3>
+
+                {% for mov in ultimos_scanner %}
+                <div class="scanner-live-item">
+                    <div class="live-dot"></div>
+                    <div>
+                        <strong>{{ mov.produto_nome }}</strong>
+                        <span>{{ mov.data_movimentacao }} • {{ mov.tipo_movimentacao|replace('_', ' ')|title }}</span>
+                    </div>
+                    <b>-{{ mov.quantidade }}</b>
+                </div>
+                {% else %}
+                <div class="scanner-live-empty">
+                    Nenhuma bipagem registrada nesta operação ainda.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </section>
+
+    {% else %}
+
+    <section class="scanner-grid">
+
+        <div class="scanner-panel scanner-input-panel">
+            <form id="scannerForm" method="GET" action="{{ url_for('codigo_barras') }}" class="scanner-form">
+                <div class="scanner-visual">
+                    <div class="scanner-line"></div>
+                </div>
+
+                <label for="scannerInput">Campo de bipagem</label>
+                <input
+                    id="scannerInput"
+                    name="codigo"
+                    type="text"
+                    value="{{ codigo }}"
+                    placeholder="Clique aqui e bipe o produto..."
+                    autocomplete="off"
+                    inputmode="numeric"
+                    autofocus
+                >
+
+                <button type="submit">Buscar produto</button>
+
+                <small class="scanner-help">
+                    O leitor USB funciona como teclado: ele digita o código e normalmente envia Enter automaticamente.
+                </small>
+            </form>
+
+            <div class="scanner-steps">
+                <div>
+                    <strong>1. Clique no campo</strong>
+                    <span>O foco também entra sozinho ao abrir a tela.</span>
+                </div>
+
+                <div>
+                    <strong>2. Bipe o produto</strong>
+                    <span>O código será preenchido automaticamente.</span>
+                </div>
+
+                <div>
+                    <strong>3. Confirme a movimentação</strong>
+                    <span>Depois informe quantidade e escolha a ação.</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="scanner-panel scanner-result-panel">
+
+            {% if produto %}
+            <div class="scanner-product-found">
+                <div class="scanner-product-top">
+                    <div>
+                        <span class="scanner-found-badge">Produto encontrado</span>
+                        <h2>{{ produto.nome }}</h2>
+                        <p>
+                            {{ produto.categoria_nome }}
+                            •
+                            {{ 'Farmácia Satélite' if produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}
+                        </p>
+                    </div>
+
+                    <div class="scanner-code-card">
+                        <span>Código</span>
+                        <strong>{{ produto.codigo_barras }}</strong>
+                    </div>
+                </div>
+
+                <div class="scanner-product-grid">
+                    <div>
+                        <span>Estoque atual</span>
+                        <strong>{{ produto.quantidade_atual }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Limite</span>
+                        <strong>{{ produto.limite_alerta }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Validade</span>
+                        <strong>{{ produto.data_vencimento }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Status</span>
+                        <strong>{{ status.texto }}</strong>
+                    </div>
+                </div>
+
+                {% if status and 'vencido' in status.texto|lower %}
+                <div class="scanner-expired-alert">
+                    Produto vencido. Bloqueado para retirada/transferência por segurança.
+                </div>
+            {% endif %}
+
+                <div class="scanner-actions-title">
+                    <span>Movimentação rápida</span>
+                    <small>Informe a quantidade e confirme a ação desejada.</small>
+                </div>
+
+                <div class="scanner-actions">
+                    <form method="POST" action="{{ url_for('baixar_estoque', id=produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="scanner-remove" type="submit">Retirar</button>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('repor_estoque', id=produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="scanner-add" type="submit">Repor</button>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('devolver_estoque', id=produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="scanner-return" type="submit">Devolver</button>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('transferir_estoque', id=produto.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <select name="destino" required>
+                            {% if produto.tipo_estoque == 'almoxarifado' %}
+                                <option value="farmacia_satelite">Para Farmácia</option>
+                            {% else %}
+                                <option value="almoxarifado">Para Almoxarifado</option>
+                            {% endif %}
+                        </select>
+                        <input type="text" name="observacao" placeholder="Observação">
+                        <button class="scanner-transfer" type="submit">Transferir</button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <div class="scanner-empty-state">
+                <div class="scanner-empty-icon">▦</div>
+                <h2>Aguardando bipagem</h2>
+                <p>Bipe um produto cadastrado para visualizar os dados e liberar as ações rápidas.</p>
+
+                {% if codigo %}
+                <div class="scanner-not-found">
+                    Código pesquisado: <strong>{{ codigo }}</strong>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const input = document.getElementById("scannerInput");
+    const form = document.getElementById("scannerForm");
+
+    if (input && form) {
+        input.focus();
+        input.select();
+
+        document.addEventListener("click", function (event) {
+            const isMovementField = event.target.closest(".scanner-actions");
+            if (!isMovementField) {
+                setTimeout(() => input.focus(), 80);
+            }
+        });
+
+        input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+
+                if (input.value.trim().length > 0) {
+                    form.submit();
+                }
+            }
+        });
+    }
+
+    const continuousInput = document.getElementById("continuousScannerInput");
+    const continuousForm = document.getElementById("continuousScannerForm");
+
+    if (continuousInput && continuousForm) {
+        continuousInput.focus();
+
+        document.addEventListener("click", function (event) {
+            const isSettings = event.target.closest(".continuous-settings");
+            if (!isSettings) {
+                setTimeout(() => continuousInput.focus(), 80);
+            }
+        });
+
+        continuousInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+
+                if (continuousInput.value.trim().length > 0) {
+                    continuousForm.submit();
+                }
+            }
+        });
+    }
+});
+</script>
+
+{% endblock %}

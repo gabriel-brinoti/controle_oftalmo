@@ -1,0 +1,217 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="security-premium-page">
+
+    <div class="security-hero">
+        <div>
+            <span class="dash-eyebrow">Proteção do sistema</span>
+            <h1>Segurança Premium</h1>
+            <p>Gerencie senha, proteção, banco de dados e controles operacionais do sistema.</p>
+        </div>
+
+        <div class="security-status-card">
+            <span>Status geral</span>
+            <strong>Protegido</strong>
+        </div>
+    </div>
+
+    {% if senha_padrao %}
+    <div class="security-warning-premium">
+        <strong>Atenção:</strong> a senha padrão admin123 ainda está ativa. Troque a senha para aumentar a segurança.
+    </div>
+    {% endif %}
+
+    <section class="security-summary-grid">
+
+        <div class="security-summary-card success">
+            <span>Banco de dados</span>
+            <strong>PostgreSQL</strong>
+            <small>Supabase conectado</small>
+        </div>
+
+        <div class="security-summary-card info">
+            <span>Usuário</span>
+            <strong>Admin</strong>
+            <small>Sessão administrativa</small>
+        </div>
+
+        <div class="security-summary-card warning">
+            <span>Senha</span>
+            <strong>{{ 'Padrão' if senha_padrao else 'Alterada' }}</strong>
+            <small>Status da credencial</small>
+        </div>
+
+        <div class="security-summary-card">
+            <span>Plano visual</span>
+            <strong>Premium</strong>
+            <small>Interface protegida</small>
+        </div>
+
+    </section>
+
+    <section class="security-main-grid">
+
+        <div class="security-panel database-panel">
+
+            <div class="panel-heading">
+                <div>
+                    <span>Infraestrutura</span>
+                    <h2>Banco Supabase/PostgreSQL</h2>
+                </div>
+            </div>
+
+            <div class="database-premium-box">
+                <div class="database-icon">DB</div>
+
+                <div>
+                    <h3>Dados protegidos em banco online</h3>
+                    <p>
+                        O sistema utiliza PostgreSQL via Supabase. Os dados não ficam mais em um arquivo local
+                        <strong>database.db</strong>.
+                    </p>
+                    <p>
+                        Para backup operacional, utilize os relatórios em Excel/PDF. Backup completo pode ser feito pelo painel do Supabase.
+                    </p>
+                </div>
+            </div>
+
+            <div class="security-controls-grid mini">
+                <div class="control-card">
+                    <span>Persistência</span>
+                    <strong>Ativa</strong>
+                    <small>Dados salvos no banco.</small>
+                </div>
+
+                <div class="control-card">
+                    <span>Backup</span>
+                    <strong>Disponível</strong>
+                    <small>Via Supabase/relatórios.</small>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="security-panel">
+
+            <div class="panel-heading">
+                <div>
+                    <span>Credenciais</span>
+                    <h2>Alterar senha</h2>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('alterar_senha') }}" class="security-form">
+
+                <div>
+                    <label>Senha atual</label>
+                    <input type="password" name="senha_atual" placeholder="Digite a senha atual" required>
+                </div>
+
+                <div>
+                    <label>Nova senha</label>
+                    <input type="password" name="nova_senha" placeholder="Digite a nova senha" required>
+                </div>
+
+                <div>
+                    <label>Confirmar nova senha</label>
+                    <input type="password" name="confirmar_senha" placeholder="Repita a nova senha" required>
+                </div>
+
+                <button type="submit">Atualizar senha</button>
+                <small>Você continuará logado após alterar a senha.</small>
+
+            </form>
+
+        </div>
+
+    </section>
+
+    <section class="security-main-grid">
+
+        <div class="security-panel">
+
+            <div class="panel-heading">
+                <div>
+                    <span>Boas práticas</span>
+                    <h2>Recomendações</h2>
+                </div>
+            </div>
+
+            <div class="security-checklist">
+
+                <div class="check-item success">
+                    <div class="check-icon">✓</div>
+                    <div>
+                        <strong>Login obrigatório</strong>
+                        <span>Rotas internas protegidas por autenticação.</span>
+                    </div>
+                </div>
+
+                <div class="check-item success">
+                    <div class="check-icon">✓</div>
+                    <div>
+                        <strong>Banco online</strong>
+                        <span>Dados salvos em PostgreSQL/Supabase.</span>
+                    </div>
+                </div>
+
+                <div class="check-item warning">
+                    <div class="check-icon">!</div>
+                    <div>
+                        <strong>Troca periódica</strong>
+                        <span>Recomendado alterar a senha regularmente.</span>
+                    </div>
+                </div>
+
+                <div class="check-item info">
+                    <div class="check-icon">i</div>
+                    <div>
+                        <strong>Auditoria operacional</strong>
+                        <span>Movimentações ficam registradas no histórico.</span>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="security-panel">
+
+            <div class="panel-heading">
+                <div>
+                    <span>Controles</span>
+                    <h2>Proteções ativas</h2>
+                </div>
+            </div>
+
+            <div class="security-controls-grid one-column">
+
+                <div class="control-card">
+                    <span>Acesso administrativo</span>
+                    <strong>Ativo</strong>
+                    <small>Usuário precisa estar logado.</small>
+                </div>
+
+                <div class="control-card">
+                    <span>Controle de licença</span>
+                    <strong>Ativo</strong>
+                    <small>Plano mensal protegido.</small>
+                </div>
+
+                <div class="control-card">
+                    <span>Rastreabilidade</span>
+                    <strong>Ativo</strong>
+                    <small>Entradas, saídas e transferências registradas.</small>
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+</section>
+
+{% endblock %}

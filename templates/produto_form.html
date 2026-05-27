@@ -1,0 +1,47 @@
+<label>Nome do produto</label>
+<input type="text" name="nome" value="{{ produto.nome if produto else '' }}" required>
+
+<label>Categoria</label>
+<select name="categoria_id" required>
+    <option value="">Selecione</option>
+    {% for categoria in categorias %}
+        <option value="{{ categoria.id }}"
+            {% if produto and produto.categoria_id == categoria.id %}selected{% endif %}>
+            {{ categoria.nome }}
+        </option>
+    {% endfor %}
+</select>
+<a class="link-extra" href="{{ url_for('nova_categoria') }}">Cadastrar nova categoria</a>
+
+<label>Tipo de estoque</label>
+<select name="tipo_estoque" required>
+    <option value="almoxarifado" {% if not produto or produto.tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
+    <option value="farmacia_satelite" {% if produto and produto.tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+</select>
+
+<label>Lote</label>
+<input type="text" name="lote" value="{{ produto.lote if produto else '' }}">
+
+<label>Código de barras</label>
+<input type="text" name="codigo_barras" value="{{ produto.codigo_barras if produto else '' }}" placeholder="Bipe ou digite o código">
+
+<label>Data de vencimento original</label>
+<input type="date" name="data_vencimento" value="{{ produto.data_vencimento if produto else '' }}" required>
+
+<label>Data de abertura</label>
+<input type="date" name="data_abertura" value="{{ produto.data_abertura if produto and produto.data_abertura else '' }}">
+
+<label>Validade após aberto em dias</label>
+<input type="number" name="validade_apos_aberto_dias" min="1" value="{{ produto.validade_apos_aberto_dias if produto and produto.validade_apos_aberto_dias else '' }}">
+
+<label>Quantidade atual</label>
+<input type="number" name="quantidade_atual" min="0" value="{{ produto.quantidade_atual if produto else 0 }}" required>
+
+<label>Estoque padrão</label>
+<input type="number" name="estoque_padrao" min="0" value="{{ produto.estoque_padrao if produto else 10 }}" required>
+
+<label>Limite de alerta</label>
+<input type="number" name="limite_alerta" min="0" value="{{ produto.limite_alerta if produto else 5 }}" required>
+
+<label>Observações</label>
+<textarea name="observacoes">{{ produto.observacoes if produto and produto.observacoes else '' }}</textarea>

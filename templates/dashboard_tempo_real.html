@@ -1,0 +1,181 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="realtime-dashboard-page">
+
+    <div class="realtime-hero">
+        <div>
+            <span class="dash-eyebrow">Central hospitalar</span>
+            <h1>Dashboard em Tempo Real</h1>
+            <p>Monitor operacional de estoque, scanner, movimentações e alertas críticos.</p>
+        </div>
+
+        <div class="realtime-clock-card">
+            <span>Status do painel</span>
+            <strong>Ao vivo</strong>
+            <small>Atualização automática</small>
+        </div>
+    </div>
+
+    <section class="realtime-metrics-grid">
+        <div class="realtime-metric-card">
+            <span>Total de produtos</span>
+            <strong>{{ dados.total_produtos }}</strong>
+            <small>Produtos cadastrados</small>
+        </div>
+
+        <div class="realtime-metric-card warning">
+            <span>Estoque baixo</span>
+            <strong>{{ dados.estoque_baixo }}</strong>
+            <small>Itens exigem atenção</small>
+        </div>
+
+        <div class="realtime-metric-card danger">
+            <span>Estoque zerado</span>
+            <strong>{{ dados.estoque_zerado }}</strong>
+            <small>Reposição urgente</small>
+        </div>
+
+        <div class="realtime-metric-card success">
+            <span>Bipagens OK hoje</span>
+            <strong>{{ dados.scanner_sucesso_hoje }}</strong>
+            <small>Scanner operacional</small>
+        </div>
+
+        <div class="realtime-metric-card danger-soft">
+            <span>Erros scanner hoje</span>
+            <strong>{{ dados.scanner_erros_hoje }}</strong>
+            <small>Falhas na leitura/estoque</small>
+        </div>
+    </section>
+
+    <section class="realtime-stock-split">
+        <div class="realtime-stock-card">
+            <span>Almoxarifado</span>
+            <strong>{{ dados.unidades_almoxarifado }}</strong>
+            <small>{{ dados.total_almoxarifado }} produto(s) cadastrados</small>
+        </div>
+
+        <div class="realtime-stock-card farmacia">
+            <span>Farmácia Satélite</span>
+            <strong>{{ dados.unidades_farmacia }}</strong>
+            <small>{{ dados.total_farmacia }} produto(s) cadastrados</small>
+        </div>
+    </section>
+
+    <section class="realtime-grid">
+
+        <div class="realtime-panel">
+            <div class="realtime-panel-head">
+                <div>
+                    <span>Operação</span>
+                    <h2>Últimas movimentações</h2>
+                </div>
+            </div>
+
+            <div class="realtime-list">
+                {% for mov in dados.ultimas_movimentacoes %}
+                <div class="realtime-item">
+                    <div class="realtime-dot"></div>
+                    <div>
+                        <strong>{{ mov.produto_nome }}</strong>
+                        <span>{{ mov.tipo_movimentacao|replace('_', ' ')|title }} • {{ mov.usuario_nome or "Sistema" }} • {{ mov.data_movimentacao }}</span>
+                    </div>
+                    <b>{{ mov.quantidade }}</b>
+                </div>
+                {% else %}
+                <div class="realtime-empty">Nenhuma movimentação recente.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="realtime-panel">
+            <div class="realtime-panel-head">
+                <div>
+                    <span>Scanner</span>
+                    <h2>Últimas bipagens</h2>
+                </div>
+            </div>
+
+            <div class="realtime-list">
+                {% for item in dados.ultimas_bipagens %}
+                <div class="realtime-item scanner {{ item.status }}">
+                    <div class="realtime-dot"></div>
+                    <div>
+                        <strong>{{ item.produto_nome or 'Produto não encontrado' }}</strong>
+                        <span>{{ item.usuario }} • {{ item.criado_em }}</span>
+                    </div>
+                    <b>{{ item.status }}</b>
+                </div>
+                {% else %}
+                <div class="realtime-empty">Nenhuma bipagem registrada.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="realtime-panel">
+            <div class="realtime-panel-head">
+                <div>
+                    <span>Consumo</span>
+                    <h2>Produtos mais movimentados</h2>
+                </div>
+            </div>
+
+            <div class="realtime-ranking">
+                {% for item in dados.produtos_mais_movimentados %}
+                <div class="ranking-live-row">
+                    <span>{{ loop.index }}</span>
+                    <strong>{{ item.produto_nome }}</strong>
+                    <b>{{ item.total }}</b>
+                </div>
+                {% else %}
+                <div class="realtime-empty">Sem dados de consumo ainda.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="realtime-panel critical-panel">
+            <div class="realtime-panel-head">
+                <div>
+                    <span>Críticos</span>
+                    <h2>Produtos em alerta</h2>
+                </div>
+            </div>
+
+            <div class="realtime-critical-list">
+                {% for produto in dados.produtos_criticos %}
+                <div class="critical-live-item">
+                    <div>
+                        <strong>{{ produto.nome }}</strong>
+                        <span>{{ produto.categoria_nome }} • {{ 'Farmácia' if produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</span>
+                    </div>
+                    <b>{{ produto.quantidade_atual }}</b>
+                </div>
+                {% else %}
+                <div class="realtime-empty">Nenhum produto crítico no momento.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </section>
+
+</section>
+
+<script>
+let tempoRealReload = setTimeout(function () {
+    window.location.reload();
+}, 15000);
+
+document.querySelectorAll("a").forEach(function (link) {
+    link.addEventListener("click", function () {
+        clearTimeout(tempoRealReload);
+    });
+});
+
+window.addEventListener("beforeunload", function () {
+    clearTimeout(tempoRealReload);
+});
+</script>
+
+{% endblock %}

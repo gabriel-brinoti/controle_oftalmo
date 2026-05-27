@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<h1>Editar Categoria</h1>
+
+<form class="form-card" method="POST">
+    <label>Nome</label>
+    <input type="text" name="nome" value="{{ categoria.nome }}" required>
+
+    <label>Descrição</label>
+    <textarea name="descricao">{{ categoria.descricao or '' }}</textarea>
+
+    <button type="submit">Atualizar Categoria</button>
+</form>
+{% endblock %}

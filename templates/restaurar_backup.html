@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="reports-premium-page">
+    <div class="reports-hero">
+        <div>
+            <span class="dash-eyebrow">Segurança do sistema</span>
+            <h1>Restaurar Backup</h1>
+            <p>Envie um arquivo JSON de backup para restaurar produtos, categorias e movimentações.</p>
+        </div>
+    </div>
+
+    <section class="report-panel full">
+        <h2>Selecionar backup</h2>
+
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="arquivo_backup" accept=".json" required>
+
+            <button type="submit" onclick="return confirm('Tem certeza? Isso substituirá os dados atuais.')">
+                Restaurar Backup
+            </button>
+        </form>
+    </section>
+</section>
+
+{% endblock %}

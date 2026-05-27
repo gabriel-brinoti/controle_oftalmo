@@ -1,0 +1,89 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>HO Estoque</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="app-shell-body ho-v2-body">
+
+<div class="app-shell ho-v2-shell">
+
+    <aside class="premium-sidebar ho-v2-sidebar">
+        <div class="ho-logo-block">
+            <div class="ho-logo-main">ho.</div>
+            <div class="ho-logo-text">
+                <strong>HOSPITAL<br>OFTALMOLÓGICO<br>DE FRANCA</strong>
+                <span>RT - Dr. Dante Baboni<br>CRM-SP 134.950</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav ho-v2-nav">
+            {% if session.get('perfil', 'admin') == 'admin' %}
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('dashboard_tempo_real') }}">Tempo Real</a>
+                <a href="{{ url_for('produtos') }}">Estoque</a>
+                <a href="{{ url_for('codigo_barras') }}">Scanner</a>
+                <a href="{{ url_for('historico') }}">Histórico</a>
+                {% if session.get('perfil', 'admin') == 'admin' %}<a href="{{ url_for('auditoria_usuarios') }}">Auditoria</a>{% endif %}
+                <a href="{{ url_for('ordem_compra') }}">Ordem de Compra</a>
+                <a href="{{ url_for('categorias') }}">Categorias</a>
+                <a href="{{ url_for('relatorios') }}">Relatórios</a>
+                <a href="{{ url_for('config_alertas') }}">Alertas</a>
+                <a href="{{ url_for('usuarios') }}">Usuários</a>
+                <a href="{{ url_for('configuracoes') }}">Configurações</a>
+            {% else %}
+                <a href="{{ url_for('produtos') }}">Estoque</a>
+                <a href="{{ url_for('codigo_barras') }}">Scanner</a>
+                <a href="{{ url_for('historico') }}">Histórico</a>
+            {% endif %}
+        </nav>
+
+        <div class="ho-contact-card">
+            <strong>16 3721-5919</strong>
+            <strong>16 3721-0823</strong>
+            <span>R. Dr. Antônio Ricardo Pinho, 1713<br>Vila Champagnat<br>Franca/SP - CEP: 14400-240</span>
+        </div>
+
+        <div class="sidebar-footer ho-v2-footer">
+            <span>{{ session.get("usuario_nome", "Admin") }}</span>
+            <a href="{{ url_for('logout') }}">Sair</a>
+        </div>
+    </aside>
+
+    <main class="premium-main ho-v2-main">
+        <header class="premium-header ho-v2-header">
+            <div>
+                <span class="header-kicker">Sistema Web</span>
+                <h2>Controle de Estoque Oftalmológico</h2>
+            </div>
+
+            <div class="ho-header-logo">ho.</div>
+
+            <div class="header-actions">
+                <span class="status-pill">Online</span>
+                <span class="user-pill">{{ session.get("usuario_nome", "Admin") }}</span>
+            </div>
+        </header>
+
+        <section class="premium-content ho-v2-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-area">
+                        {% for category, message in messages %}
+                            <div class="flash {{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            {% block conteudo %}{% endblock %}
+        </section>
+    </main>
+
+</div>
+
+</body>
+</html>

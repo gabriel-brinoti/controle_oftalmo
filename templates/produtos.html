@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="products-premium-page">
+
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Gestão de produtos</span>
+            <h1>Produtos — {{ tipo_estoque_nome }}</h1>
+            <p>Controle operacional de estoque, validade, movimentações e transferências.</p>
+        </div>
+
+        <a class="hero-action-btn" href="{{ url_for('novo_produto') }}">+ Novo Produto</a>
+    </div>
+
+    <div class="stock-tabs-premium">
+        <a href="{{ url_for('produtos') }}" class="{{ 'ativo' if not tipo_estoque else '' }}">Todos</a>
+        <a href="{{ url_for('produtos', tipo_estoque='almoxarifado') }}"
+            class="{{ 'ativo' if tipo_estoque == 'almoxarifado' else '' }}">Almoxarifado</a>
+        <a href="{{ url_for('produtos', tipo_estoque='farmacia') }}"
+            class="{{ 'ativo' if tipo_estoque == 'farmacia_satelite' else '' }}">Farmácia Satélite</a>
+    </div>
+
+    <div class="alertas-operacionais">
+        {% if produtos_vencidos %}
+        <div class="alerta-card danger">
+            🚨 {{ produtos_vencidos|length }} produto(s) vencido(s)
+        </div>
+        {% endif %}
+
+        {% set baixos = produtos_status | selectattr("status.texto", "equalto", "Estoque baixo") | list %}
+        {% if baixos %}
+        <div class="alerta-card warning">
+            ⚠ {{ baixos|length }} produto(s) com estoque baixo
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <label>Buscar produto ou lote</label>
+        <input type="text" name="busca" value="{{ busca }}" placeholder="Digite o nome ou lote">
+    </div>
+    <div>
+        <label>Categoria</label>
+        <select name="categoria_id">
+            <option value="">Todas</option>
+            {% for categoria in categorias %}
+            <option value="{{ categoria.id }}" {% if categoria_id and categoria_id|int==categoria.id %}selected{% endif
+                %}>
+                {{ categoria.nome }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div>
+        <label>Status</label>
+        <select name="filtro">
+            <option value="todos" {% if filtro=='todos' %}selected{% endif %}>Todos</option>
+            <option value="vencidos" {% if filtro=='vencidos' %}selected{% endif %}>Vencidos</option>
+            <option value="proximos" {% if filtro=='proximos' %}selected{% endif %}>Próximos do vencimento</option>
+            <option value="estoque" {% if filtro=='estoque' %}selected{% endif %}>Estoque baixo</option>
+        </select>
+    </div>
+
+    <button type="submit">Filtrar</button>
+    <a class="clear-filter" href="{{ url_for('produtos') }}">Limpar</a>
+    </form>
+</section>
+
+<section class="products-list-premium">
+
+    {% if produtos_vencidos %}
+    <section class="expired-products-section">
+        <div class="expired-products-head">
+            <div>
+                <span>Bloqueio de segurança</span>
+                <h2>Produtos vencidos / bloqueados</h2>
+                <p>Esses itens não podem ser retirados, transferidos ou usados na operação.</p>
+            </div>
+            <strong>{{ produtos_vencidos|length }} item(ns)</strong>
+        </div>
+
+        <div class="expired-products-grid">
+            {% for item in produtos_vencidos %}
+            {% set produto = item.produto %}
+            {% set status = item.status %}
+            <article class="expired-product-card">
+                <div>
+                    <span class="expired-badge">Vencido</span>
+                    <h3>{{ produto.nome }}</h3>
+                    <p>{{ produto.categoria_nome }} • {{ 'Farmácia Satélite' if produto.tipo_estoque ==
+                        'farmacia_satelite' else 'Almoxarifado' }}</p>
+                </div>
+
+                <div class="expired-product-info">
+                    <div>
+                        <span>Quantidade</span>
+                        <strong>{{ produto.quantidade_atual }}</strong>
+                    </div>
+                    <div>
+                        <span>Vencimento</span>
+                        <strong>{{ produto.data_vencimento }}</strong>
+                    </div>
+                    <div>
+                        <span>Lote</span>
+                        <strong>{{ produto.lote or '-' }}</strong>
+                    </div>
+                </div>
+
+                <div class="expired-warning">
+                    {{ status.texto }} — item bloqueado para uso operacional.
+                </div>
+
+                <div class="expired-actions">
+                    <a href="{{ url_for('editar_produto', id=produto.id) }}">Ajustar cadastro</a>
+                    <a href="{{ url_for('historico_produto', id=produto.id) }}">Ver histórico</a>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% for item in produtos_status %}
+    {% if item.vencido %}<div class="expired-warning">Produto vencido bloqueado para uso.</div>{% endif %}
+    <article class="product-card-premium {{ item.status.tipo }}">
+        <div class="product-main-info">
+            <div class="product-title-row">
+                <div>
+                    <h2>{{ item.produto.nome }}</h2>
+                    <span>{{ item.produto.categoria_nome }} • {{ 'Farmácia Satélite' if item.produto.tipo_estoque ==
+                        'farmacia_satelite' else 'Almoxarifado' }}</span>
+                </div>
+
+                <span class="status-badge-premium {{ item.status.tipo }}">{{ item.status.texto }}</span>
+            </div>
+
+            <div class="product-details-grid">
+                <div>
+                    <span>Lote</span>
+                    <strong>{{ item.produto.lote or '-' }}</strong>
+                </div>
+                <div>
+                    <span>Código de Barras</span>
+                    <strong>{{ item.produto.codigo_barras or '-' }}</strong>
+                </div>
+                <div>
+                    <span>Vencimento</span>
+                    <strong>{{ item.produto.data_vencimento }}</strong>
+                </div>
+                <div>
+                    <span>Aberto em</span>
+                    <strong>{{ item.produto.data_abertura or '-' }}</strong>
+                </div>
+                <div>
+                    <span>Vence após aberto</span>
+                    <strong>{{ item.status.vencimento_apos_aberto or '-' }}</strong>
+                </div>
+            </div>
+
+            <div class="stock-progress-wrap">
+                <div class="stock-progress-header">
+                    <span>Estoque atual</span>
+                    <strong>{{ item.produto.quantidade_atual }} / {{ item.produto.estoque_padrao }}</strong>
+                </div>
+
+                {% set porcentagem = (item.produto.quantidade_atual / item.produto.estoque_padrao * 100) if
+                item.produto.estoque_padrao > 0 else 0 %}
+                {% if porcentagem > 100 %}
+                {% set porcentagem = 100 %}
+                {% endif %}
+
+                <div class="stock-progress">
+                    <div style="width: {{ porcentagem }}%;"></div>
+                </div>
+
+                <small>Limite de alerta: {{ item.produto.limite_alerta }}</small>
+            </div>
+        </div>
+
+        <div class="product-actions-panel">
+            <div class="action-section">
+                <span class="action-section-title">Ações rápidas</span>
+                <div class="quick-actions-premium">
+                    <a class="pill-action edit" href="{{ url_for('editar_produto', id=item.produto.id) }}">Editar</a>
+                    <a class="pill-action history"
+                        href="{{ url_for('historico_produto', id=item.produto.id) }}">Histórico</a>
+                    <form method="POST" action="{{ url_for('excluir_produto', id=item.produto.id) }}"
+                        onsubmit="return confirm('Deseja excluir este produto?')">
+                        <button class="pill-action delete" type="submit">Excluir</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="action-section">
+                <span class="action-section-title">Movimentações</span>
+
+                <form class="movement-premium" method="POST"
+                    action="{{ url_for('baixar_estoque', id=item.produto.id) }}">
+                    <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                    <input type="text" name="observacao" placeholder="Observação">
+                    <button class="move-remove" type="submit">Retirar</button>
+                </form>
+
+                <form class="movement-premium" method="POST"
+                    action="{{ url_for('devolver_estoque', id=item.produto.id) }}">
+                    <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                    <input type="text" name="observacao" placeholder="Observação">
+                    <button class="move-return" type="submit">Devolver</button>
+                </form>
+
+                <form class="movement-premium transfer" method="POST"
+                    action="{{ url_for('transferir_estoque', id=item.produto.id) }}">
+                    <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                    <select name="destino" required>
+                        {% if item.produto.tipo_estoque == 'almoxarifado' %}
+                        <option value="farmacia_satelite">Para Farmácia</option>
+                        {% else %}
+                        <option value="almoxarifado">Para Almoxarifado</option>
+                        {% endif %}
+                    </select>
+                    <input type="text" name="observacao" placeholder="Observação">
+                    <button class="move-transfer" type="submit">Transferir</button>
+                </form>
+
+                <form class="movement-premium" method="POST"
+                    action="{{ url_for('repor_estoque', id=item.produto.id) }}">
+                    <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                    <input type="text" name="observacao" placeholder="Observação">
+                    <button class="move-add" type="submit">Repor</button>
+                </form>
+            </div>
+        </div>
+    </article>
+    {% else %}
+    <div class="empty-premium products-empty">
+        Nenhum produto encontrado com os filtros selecionados.
+    </div>
+    {% endfor %}
+</section>
+
+</section>
+
+{% endblock %}

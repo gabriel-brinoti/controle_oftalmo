@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="reports-premium-page">
+
+    <div class="reports-hero">
+        <div>
+            <span class="dash-eyebrow">Monitoramento operacional</span>
+            <h1>Alertas Visuais</h1>
+            <p>Produtos vencidos, estoque baixo, itens zerados e avisos de ordem de compra.</p>
+        </div>
+    </div>
+
+    <section class="report-panel full">
+        <div class="panel-heading">
+            <div>
+                <span>Alertas atuais</span>
+                <h2>Situação do estoque</h2>
+            </div>
+        </div>
+
+        {% if mensagem_alertas %}
+            <pre class="alert-message-box">{{ mensagem_alertas }}</pre>
+        {% else %}
+            <div class="empty-premium">
+                Nenhum alerta crítico encontrado no momento.
+            </div>
+        {% endif %}
+    </section>
+
+</section>
+
+{% endblock %}

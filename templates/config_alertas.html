@@ -1,0 +1,206 @@
+
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="alerts-premium-page">
+
+    <div class="alerts-hero">
+        <div>
+            <span class="dash-eyebrow">Central de notificações</span>
+            <h1>Alertas Premium</h1>
+            <p>Configure envios automáticos para vencimentos, estoque crítico e ordem de compra.</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('testar_alertas') }}">
+            <button class="hero-alert-btn" type="submit">Enviar teste agora</button>
+        </form>
+    </div>
+
+    <section class="alerts-status-grid">
+        <div class="alert-status-card email">
+            <span>E-mail</span>
+            <strong>{{ 'Ativo' if config.usar_email else 'Inativo' }}</strong>
+            <small>{{ config.email_destino or 'Nenhum e-mail configurado' }}</small>
+        </div>
+
+        <div class="alert-status-card whatsapp">
+            <span>WhatsApp</span>
+            <strong>{{ 'Ativo' if config.usar_whatsapp else 'Inativo' }}</strong>
+            <small>{{ config.telefone_whatsapp or 'Nenhum telefone configurado' }}</small>
+        </div>
+
+        <div class="alert-status-card time">
+            <span>Horário</span>
+            <strong>{{ config.hora_envio or '08:00' }}</strong>
+            <small>Horário preferencial de envio</small>
+        </div>
+    </section>
+
+    <section class="alerts-main-grid">
+
+        <div class="alerts-panel config-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Configuração</span>
+                    <h2>Canais de envio</h2>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('config_alertas') }}" class="alerts-form-premium">
+
+                <div class="form-row-premium">
+                    <div>
+                        <label>E-mail de destino</label>
+                        <input type="email" name="email_destino" value="{{ config.email_destino or '' }}" placeholder="exemplo@clinica.com">
+                    </div>
+
+                    <div>
+                        <label>Telefone WhatsApp</label>
+                        <input type="text" name="telefone_whatsapp" value="{{ config.telefone_whatsapp or '' }}" placeholder="5516999999999">
+                    </div>
+                </div>
+
+                <div>
+                    <label>Horário preferencial</label>
+                    <input type="time" name="hora_envio" value="{{ config.hora_envio or '08:00' }}">
+                </div>
+
+                <div class="channel-cards">
+                    <label class="channel-card">
+                        <input type="checkbox" name="usar_email" {% if config.usar_email %}checked{% endif %}>
+                        <div>
+                            <strong>E-mail</strong>
+                            <span>Receber alertas no e-mail configurado.</span>
+                        </div>
+                    </label>
+
+                    <label class="channel-card">
+                        <input type="checkbox" name="usar_whatsapp" {% if config.usar_whatsapp %}checked{% endif %}>
+                        <div>
+                            <strong>WhatsApp</strong>
+                            <span>Receber alertas no celular via integração.</span>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="alert-types-box">
+                    <h3>Tipos de alerta</h3>
+
+                    <label>
+                        <input type="checkbox" name="alertar_vencimentos" {% if config.alertar_vencimentos %}checked{% endif %}>
+                        <div>
+                            <strong>Produtos vencendo/vencidos</strong>
+                            <span>Avisa produtos próximos do vencimento ou já vencidos.</span>
+                        </div>
+                    </label>
+
+                    <label>
+                        <input type="checkbox" name="alertar_estoque" {% if config.alertar_estoque %}checked{% endif %}>
+                        <div>
+                            <strong>Estoque baixo/zerado</strong>
+                            <span>Avisa itens abaixo do limite ou sem saldo.</span>
+                        </div>
+                    </label>
+
+                    <label>
+                        <input type="checkbox" name="alertar_ordem_compra" {% if config.alertar_ordem_compra %}checked{% endif %}>
+                        <div>
+                            <strong>Ordem de compra sugerida</strong>
+                            <span>Envia a lista inteligente de itens para compra.</span>
+                        </div>
+                    </label>
+                </div>
+
+                <button class="save-alert-btn" type="submit">Salvar configurações</button>
+            </form>
+        </div>
+
+        <div class="alerts-panel preview-panel">
+            <div class="panel-heading">
+                <div>
+                    <span>Prévia</span>
+                    <h2>Mensagem automática</h2>
+                </div>
+            </div>
+
+            {% if mensagem_preview %}
+                <pre class="premium-message-preview">{{ mensagem_preview }}</pre>
+            {% else %}
+                <div class="empty-premium">
+                    Nenhum alerta encontrado no momento.
+                </div>
+            {% endif %}
+
+            <div class="integration-note">
+                <strong>Integração</strong>
+                <span>Para envio real, configure SMTP e/ou WhatsApp Webhook no Render.</span>
+            </div>
+        </div>
+
+    </section>
+
+    <section class="alerts-panel">
+        <div class="panel-heading">
+            <div>
+                <span>Histórico</span>
+                <h2>Últimos envios</h2>
+            </div>
+        </div>
+
+        <div class="table-card-premium">
+            <table class="tabela-premium compact-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Canal</th>
+                        <th>Destino</th>
+                        <th>Status</th>
+                        <th>Erro</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in historico %}
+                    <tr>
+                        <td>{{ item.criado_em }}</td>
+                        <td>{{ item.tipo_alerta }}</td>
+                        <td>{{ item.canal }}</td>
+                        <td>{{ item.destino or '-' }}</td>
+                        <td>
+                            <span class="alert-history-status {{ 'sent' if item.status == 'enviado' else 'error' }}">
+                                {{ item.status }}
+                            </span>
+                        </td>
+                        <td>{{ item.erro or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="sem-registro">Nenhum envio registrado ainda.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</section>
+
+
+<div class="alert-whatsapp-panel">
+    <div>
+        <span>WhatsApp automático</span>
+        <h2>Envio manual por WhatsApp</h2>
+        <p>Use este botão para testar ou disparar agora os alertas críticos configurados.</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('enviar_alerta_whatsapp_manual') }}">
+        
+<label>Intervalo mínimo entre envios automáticos</label>
+<input type="number" name="intervalo_minutos" value="{{ config.intervalo_minutos if config and config.intervalo_minutos else 720 }}" min="10">
+<small>Exemplo: 720 minutos = 12 horas. Evita spam no WhatsApp.</small>
+
+<button type="submit">Enviar alerta agora</button>
+    </form>
+</div>
+
+{% endblock %}

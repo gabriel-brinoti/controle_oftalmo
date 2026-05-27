@@ -1,0 +1,51 @@
+
+<table class="tabela-premium">
+    <thead>
+        <tr>
+            <th>Produto</th>
+            <th>Categoria</th>
+            <th>Lote</th>
+            <th>Atual</th>
+            <th>Mínimo</th>
+            <th>Padrão</th>
+            <th>Sugerido comprar</th>
+            <th>Ação</th>
+            <th>Transferência possível</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in lista %}
+        <tr>
+            <td><strong>{{ item.nome }}</strong></td>
+            <td>{{ item.categoria }}</td>
+            <td>{{ item.lote }}</td>
+            <td>{{ item.quantidade_atual }}</td>
+            <td>{{ item.limite_alerta }}</td>
+            <td>{{ item.estoque_padrao }}</td>
+            <td><strong>{{ item.sugestao }}</strong></td>
+            <td>
+                <span class="badge {{ 'success' if item.acao_sugerida == 'Transferir' else 'warning' }}">
+                    {{ item.acao_sugerida }}
+                </span>
+            </td>
+            <td>
+                {% if item.sugestao_transferencia %}
+                    Transferir {{ item.sugestao_transferencia.quantidade }} de {{ item.sugestao_transferencia.origem_nome }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge {{ 'danger' if item.nivel == 'critico' else 'warning' }}">
+                    {{ item.status }}
+                </span>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="10" class="sem-registro">Nenhum item precisa de compra neste estoque.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
