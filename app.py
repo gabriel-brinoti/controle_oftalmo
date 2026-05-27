@@ -681,7 +681,6 @@ def gerar_backup_manual():
     flash("Backup manual gerado com sucesso.", "sucesso")
     return redirect(url_for("painel_backup"))
 
-<<<<<<< HEAD
 @app.route("/restaurar_backup", methods=["GET", "POST"])
 @login_obrigatorio
 @admin_obrigatorio
@@ -786,8 +785,6 @@ def restaurar_backup():
 
     return render_template("restaurar_backup.html")
 
-=======
->>>>>>> 198d8bd3457596098f41b980752307e3dc9dfc90
 @app.route("/")
 def index():
     if session.get("logado"):
@@ -2477,11 +2474,8 @@ def separar_itens_por_estoque(itens):
 @app.route("/ordem_compra")
 @login_obrigatorio
 @licenca_obrigatoria
-<<<<<<< HEAD
 @estoque_obrigatorio
-=======
 @admin_obrigatorio
->>>>>>> 198d8bd3457596098f41b980752307e3dc9dfc90
 def ordem_compra():
     tipo_estoque = request.args.get("tipo_estoque", "").strip()
 
@@ -3088,11 +3082,8 @@ def executar_alerta_whatsapp_automatico(forcar=False):
 @app.route("/dashboard_tempo_real")
 @login_obrigatorio
 @licenca_obrigatoria
-<<<<<<< HEAD
 @estoque_obrigatorio
-=======
 @admin_obrigatorio
->>>>>>> 198d8bd3457596098f41b980752307e3dc9dfc90
 def dashboard_tempo_real():
     dados = montar_dashboard_tempo_real()
     return render_template("dashboard_tempo_real.html", dados=dados)
@@ -3397,10 +3388,6 @@ def scanner_baixa_rapida():
     flash(f"Baixa rápida realizada: {produto['nome']} (-{quantidade}).", "sucesso")
     return redirect(url_for("codigo_barras", modo="continuo", scanner_status="sucesso"))
 
-
-<<<<<<< HEAD
-
-
 @app.route("/alertas_visual")
 @login_obrigatorio
 @licenca_obrigatoria
@@ -3421,8 +3408,6 @@ def alertas_visual():
         tipos_alertas=tipos
     )
 
-=======
->>>>>>> 198d8bd3457596098f41b980752307e3dc9dfc90
 @app.route("/config_alertas", methods=["GET", "POST"])
 @login_obrigatorio
 @alteracao_permitida
@@ -3601,10 +3586,6 @@ criar_banco()
 
 iniciar_backup_automatico()
 
-<<<<<<< HEAD
 
-
-=======
->>>>>>> 198d8bd3457596098f41b980752307e3dc9dfc90
 if __name__ == "__main__":
     app.run(debug=True)
