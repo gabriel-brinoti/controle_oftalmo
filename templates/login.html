@@ -9,7 +9,7 @@
     <div class="login-card">
         <img class="login-logo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" onerror="this.style.display='none'">
         <h1>Controle de Qualidade</h1>
-        <p>Sistema de controle de produtos oftalmológicos</p>
+        <p>Sistema de controle de produtos</p>
 
         {% with mensagens = get_flashed_messages(with_categories=true) %}
             {% if mensagens %}
@@ -28,13 +28,6 @@
 
             <button type="submit">Entrar</button>
         </form>
-            <div class="login-hint">
-                <strong>Usuários iniciais</strong>
-                <span>admin / admin123 — Sala Central</span>
-                <span>estoque / admin123 — Operacional</span>
-            </div>
-
-        <small>Usuário inicial: admin | Senha inicial: admin123</small>
     </div>
 </body>
 </html>

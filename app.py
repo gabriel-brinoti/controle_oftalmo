@@ -1739,33 +1739,113 @@ def novo_produto():
                 flash(erro, "erro")
             return render_template("novo_produto.html", categorias=categorias_lista)
 
+        nome = request.form.get("nome", "").strip()
+        categoria_id = request.form.get("categoria_id")
+        lote = request.form.get("lote", "").strip()
+        codigo_barras = request.form.get("codigo_barras", "").strip()
+        data_vencimento = request.form.get("data_vencimento")
+        data_abertura = request.form.get("data_abertura") or None
+        validade_apos_aberto_dias = request.form.get("validade_apos_aberto_dias") or None
+        quantidade = int(request.form.get("quantidade_atual") or 0)
+        estoque_padrao = int(request.form.get("estoque_padrao") or 0)
+        limite_alerta = int(request.form.get("limite_alerta") or 0)
+        observacoes = request.form.get("observacoes", "").strip()
+        tipo_estoque = request.form.get("tipo_estoque", "almoxarifado")
+
         conn = conectar()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO produtos (
-                nome, categoria_id, lote, codigo_barras, data_vencimento, data_abertura,
-                validade_apos_aberto_dias, quantidade_atual, estoque_padrao,
-                limite_alerta, observacoes, tipo_estoque
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            request.form.get("nome").strip(),
-            request.form.get("categoria_id"),
-            request.form.get("lote", "").strip(),
-            request.form.get("codigo_barras", "").strip(),
-            request.form.get("data_vencimento"),
-            request.form.get("data_abertura") or None,
-            request.form.get("validade_apos_aberto_dias") or None,
-            int(request.form.get("quantidade_atual") or 0),
-            int(request.form.get("estoque_padrao") or 0),
-            int(request.form.get("limite_alerta") or 0),
-            request.form.get("observacoes", "").strip(),
-            request.form.get("tipo_estoque", "almoxarifado")
-        ))
-        conn.commit()
-        conn.close()
 
-        flash("Produto cadastrado com sucesso.", "sucesso")
-        return redirect(url_for("produtos"))
+        try:
+            cursor.execute("""
+                SELECT id, quantidade_atual
+                FROM produtos
+                WHERE LOWER(TRIM(nome)) = LOWER(TRIM(%s))
+                  AND COALESCE(lote, '') = COALESCE(%s, '')
+                  AND data_vencimento = %s
+                  AND tipo_estoque = %s
+                LIMIT 1
+            """, (
+                nome,
+                lote,
+                data_vencimento,
+                tipo_estoque
+            ))
+
+            produto_existente = cursor.fetchone()
+
+            if produto_existente:
+                quantidade_anterior = produto_existente["quantidade_atual"]
+                nova_quantidade = quantidade_anterior + quantidade
+
+                cursor.execute("""
+                    UPDATE produtos
+                    SET quantidade_atual = %s,
+                        estoque_padrao = GREATEST(estoque_padrao, %s),
+                        limite_alerta = %s,
+                        codigo_barras = COALESCE(NULLIF(%s, ''), codigo_barras),
+                        observacoes = CASE
+                            WHEN %s <> '' THEN %s
+                            ELSE observacoes
+                        END
+                    WHERE id = %s
+                """, (
+                    nova_quantidade,
+                    estoque_padrao,
+                    limite_alerta,
+                    codigo_barras,
+                    observacoes,
+                    observacoes,
+                    produto_existente["id"]
+                ))
+
+                registrar_movimentacao(
+                    cursor,
+                    produto_existente["id"],
+                    nome,
+                    "reposicao",
+                    quantidade,
+                    quantidade_anterior,
+                    nova_quantidade,
+                    "Quantidade adicionada automaticamente ao lote já existente.",
+                    tipo_estoque
+                )
+
+                conn.commit()
+                flash("Produto já existente. A quantidade foi somada ao lote cadastrado.", "sucesso")
+                return redirect(url_for("produtos"))
+
+            cursor.execute("""
+                INSERT INTO produtos (
+                    nome, categoria_id, lote, codigo_barras, data_vencimento, data_abertura,
+                    validade_apos_aberto_dias, quantidade_atual, estoque_padrao,
+                    limite_alerta, observacoes, tipo_estoque
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                nome,
+                categoria_id,
+                lote,
+                codigo_barras,
+                data_vencimento,
+                data_abertura,
+                validade_apos_aberto_dias,
+                quantidade,
+                estoque_padrao,
+                limite_alerta,
+                observacoes,
+                tipo_estoque
+            ))
+
+            conn.commit()
+            flash("Produto cadastrado com sucesso.", "sucesso")
+            return redirect(url_for("produtos"))
+
+        except Exception as erro:
+            conn.rollback()
+            flash(f"Erro ao cadastrar produto: {erro}", "erro")
+            return render_template("novo_produto.html", categorias=categorias_lista)
+
+        finally:
+            conn.close()
 
     return render_template("novo_produto.html", categorias=categorias_lista)
 
