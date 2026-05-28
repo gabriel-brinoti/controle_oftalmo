@@ -23,6 +23,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 
+from openpyxl import load_workbook
 
 load_dotenv()
 
@@ -1368,6 +1369,9 @@ def produtos(tipo_estoque=None):
     produtos_status = []
     produtos_vencidos = []
 
+    pagina = int(request.args.get("pagina", 1))
+    por_pagina = 3
+
     for produto in produtos_lista:
         status = calcular_status(produto)
         texto = status["texto"].lower()
@@ -1389,6 +1393,14 @@ def produtos(tipo_estoque=None):
             else:
                 produtos_status.append(item_status)
 
+    total_produtos = len(produtos_status)
+    total_paginas = (total_produtos + por_pagina - 1) // por_pagina
+
+    inicio = (pagina - 1) * por_pagina
+    fim = inicio + por_pagina
+
+    produtos_status = produtos_status[inicio:fim]
+
     return render_template(
         "produtos.html",
         produtos_status=produtos_status,
@@ -1398,7 +1410,9 @@ def produtos(tipo_estoque=None):
         categoria_id=categoria_id,
         categorias=categorias_lista,
         tipo_estoque=tipo_banco,
-        tipo_estoque_nome=nome_tipo_estoque(tipo_banco) if tipo_banco else "Todos os Estoques"
+        tipo_estoque_nome=nome_tipo_estoque(tipo_banco) if tipo_banco else "Todos os Estoques",
+        pagina=pagina,
+        total_paginas=total_paginas,
     )
 
 
@@ -3666,6 +3680,104 @@ criar_banco()
 
 iniciar_backup_automatico()
 
+@app.route("/importar_estoque", methods=["GET", "POST"])
+@login_obrigatorio
+@alteracao_permitida
+@estoque_obrigatorio
+def importar_estoque():
+    if request.method == "POST":
+        arquivo = request.files.get("arquivo")
+
+        if not arquivo:
+            flash("Selecione uma planilha Excel.", "erro")
+            return redirect(url_for("importar_estoque"))
+
+        try:
+            wb = load_workbook(arquivo)
+            ws = wb.active
+
+            conn = conectar()
+            cursor = conn.cursor()
+
+            importados = 0
+            atualizados = 0
+
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                nome, quantidade, lote, data_vencimento, categoria_nome, tipo_estoque, codigo_barras, estoque_padrao, limite_alerta, observacoes = row
+
+                if not nome:
+                    continue
+
+                nome = str(nome).strip()
+                lote = str(lote or "").strip()
+                categoria_nome = str(categoria_nome or "Materiais").strip()
+                tipo_estoque = str(tipo_estoque or "almoxarifado").strip()
+                codigo_barras = str(codigo_barras or "").strip()
+                observacoes = str(observacoes or "").strip()
+
+                quantidade = int(quantidade or 0)
+                estoque_padrao = int(estoque_padrao or quantidade)
+                limite_alerta = int(limite_alerta or 1)
+
+                cursor.execute("""
+                    INSERT INTO categorias (nome)
+                    VALUES (%s)
+                    ON CONFLICT (nome) DO NOTHING
+                """, (categoria_nome,))
+
+                cursor.execute("SELECT id FROM categorias WHERE nome = %s", (categoria_nome,))
+                categoria = cursor.fetchone()
+                categoria_id = categoria["id"]
+
+                cursor.execute("""
+                    SELECT id, quantidade_atual
+                    FROM produtos
+                    WHERE LOWER(TRIM(nome)) = LOWER(TRIM(%s))
+                      AND COALESCE(lote, '') = COALESCE(%s, '')
+                      AND data_vencimento = %s
+                      AND tipo_estoque = %s
+                    LIMIT 1
+                """, (nome, lote, data_vencimento, tipo_estoque))
+
+                existente = cursor.fetchone()
+
+                if existente:
+                    nova_quantidade = existente["quantidade_atual"] + quantidade
+
+                    cursor.execute("""
+                        UPDATE produtos
+                        SET quantidade_atual = %s
+                        WHERE id = %s
+                    """, (nova_quantidade, existente["id"]))
+
+                    atualizados += 1
+
+                else:
+                    cursor.execute("""
+                        INSERT INTO produtos (
+                            nome, categoria_id, lote, codigo_barras,
+                            data_vencimento, quantidade_atual, estoque_padrao,
+                            limite_alerta, observacoes, tipo_estoque
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        nome, categoria_id, lote, codigo_barras,
+                        data_vencimento, quantidade, estoque_padrao,
+                        limite_alerta, observacoes, tipo_estoque
+                    ))
+
+                    importados += 1
+
+            conn.commit()
+            conn.close()
+
+            flash(f"Importação concluída. Novos: {importados}. Atualizados: {atualizados}.", "sucesso")
+            return redirect(url_for("produtos"))
+
+        except Exception as erro:
+            flash(f"Erro ao importar planilha: {erro}", "erro")
+            return redirect(url_for("importar_estoque"))
+
+    return render_template("importar_estoque.html")
 
 if __name__ == "__main__":
     app.run(debug=True)
