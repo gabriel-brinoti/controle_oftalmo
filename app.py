@@ -1173,7 +1173,7 @@ def montar_central_categorias():
 @app.route("/categorias")
 @login_obrigatorio
 @licenca_obrigatoria
-@admin_obrigatorio
+@estoque_obrigatorio
 def categorias():
     categorias = montar_central_categorias()
     return render_template("categorias.html", categorias=categorias)
@@ -1182,7 +1182,7 @@ def categorias():
 @app.route("/categorias/nova", methods=["GET", "POST"])
 @login_obrigatorio
 @alteracao_permitida
-@admin_obrigatorio
+@estoque_obrigatorio
 def nova_categoria():
     if request.method == "POST":
         nome = request.form.get("nome", "").strip()
