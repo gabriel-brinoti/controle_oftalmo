@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="reports-premium-page">
+    <div class="reports-hero">
+        <div>
+            <span class="dash-eyebrow">Importação</span>
+            <h1>Importar Estoque</h1>
+            <p>Envie uma planilha Excel para cadastrar produtos em massa.</p>
+        </div>
+    </div>
+
+    <section class="report-panel full">
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="arquivo" accept=".xlsx" required>
+
+            <button type="submit"
+                onclick="this.disabled=true; this.innerText='Importando...'; this.form.submit();">
+                Importar Planilha
+            </button>
+        </form>
+    </section>
+</section>
+
+{% endblock %}

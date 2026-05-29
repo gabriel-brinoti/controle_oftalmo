@@ -7785,3 +7785,56 @@ button,
     color:#92400e;
     border:2px solid #f59e0b;
 }
+
+.paginacao {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    margin: 40px 0 10px;
+    flex-wrap: wrap;
+}
+
+.paginacao a {
+    background: linear-gradient(135deg, #006b67, #009688);
+    color: white;
+    text-decoration: none;
+
+    padding: 12px 20px;
+    border-radius: 14px;
+
+    font-weight: 700;
+    font-size: .95rem;
+
+    box-shadow:
+        0 10px 25px rgba(0, 107, 103, .18);
+
+    transition: .25s ease;
+}
+
+.paginacao a:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 16px 30px rgba(0, 107, 103, .28);
+
+    background: linear-gradient(135deg, #007d77, #00b3a4);
+}
+
+.paginacao span {
+    background: rgba(255,255,255,.9);
+
+    border: 1px solid rgba(0,0,0,.06);
+
+    padding: 12px 18px;
+
+    border-radius: 14px;
+
+    font-weight: 800;
+
+    color: #0f172a;
+
+    backdrop-filter: blur(10px);
+
+    box-shadow:
+        0 10px 30px rgba(15, 23, 42, .06);
+}

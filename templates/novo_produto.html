@@ -4,6 +4,9 @@
 
 <form class="form-card" method="POST">
     {% include "produto_form.html" %}
-    <button type="submit">Salvar Produto</button>
+    <button type="submit"
+onclick="this.disabled=true; this.innerText='Salvando...'; this.form.submit();">
+    Salvar Produto
+</button>
 </form>
 {% endblock %}
