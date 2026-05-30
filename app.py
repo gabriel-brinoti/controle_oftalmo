@@ -538,6 +538,9 @@ def enviar_backup_para_supabase(caminho_arquivo):
     nome_arquivo = os.path.basename(caminho_arquivo)
     storage_path = f"automaticos/{nome_arquivo}"
 
+    bucket = bucket.strip().strip("/")
+    storage_path = storage_path.strip().lstrip("/")
+    
     url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{storage_path}"
 
     headers = {
