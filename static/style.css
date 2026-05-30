@@ -7858,3 +7858,35 @@ button,
     color: #0b6a6a;
     font-weight: 700;
 }
+
+.sidebar-nav a.active {
+    background: #ffffff;
+    color: #0f172a !important;
+    font-weight: 800;
+    border-radius: 16px;
+}
+
+.sidebar-nav a.active,
+.sidebar-nav a.active:hover {
+    background: #ffffff;
+    color: #0f172a !important;
+}
+
+.sidebar-nav a.active,
+.sidebar-nav a.active:hover {
+    background: #ffffff !important;
+    color: #006b67 !important;
+    font-weight: 900 !important;
+    border-radius: 16px;
+}
+
+.ho-v2-nav a:first-child:not(.active) {
+    background: transparent !important;
+    color: #e9f7f4 !important;
+}
+
+.ho-v2-nav a.active,
+.ho-v2-nav a.active:hover {
+    background: #ffffff !important;
+    color: #006b67 !important;
+}

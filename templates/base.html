@@ -23,10 +23,10 @@
         <nav class="sidebar-nav ho-v2-nav">
     {% if session.get('perfil', 'admin') == 'admin' %}
 
-        <a href="{{ url_for('dashboard') }}"
-           class="{{ 'active' if request.endpoint == 'dashboard' else '' }}">
-           Dashboard
-        </a>
+      <a href="{{ url_for('dashboard') }}"
+   class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+   Dashboard
+</a>
 
         <a href="{{ url_for('dashboard_tempo_real') }}"
            class="{{ 'active' if request.endpoint == 'dashboard_tempo_real' else '' }}">
@@ -44,9 +44,9 @@
         </a>
 
         <a href="{{ url_for('historico') }}"
-           class="{{ 'active' if request.endpoint == 'historico' else '' }}">
-           Histórico
-        </a>
+   class="{% if request.endpoint == 'historico' or request.endpoint == 'historico_produto' %}active{% endif %}">
+   Histórico
+</a>
 
         <a href="{{ url_for('auditoria_usuarios') }}"
            class="{{ 'active' if request.endpoint == 'auditoria_usuarios' else '' }}">
