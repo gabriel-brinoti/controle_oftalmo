@@ -604,7 +604,7 @@ def gerar_backup_sistema():
 
     limpar_backups_antigos()
 
-    return caminho
+    return caminho, upload_ok, upload_mensagem
 
 def limpar_backups_antigos(limite=30):
     garantir_pasta_backup()
@@ -669,9 +669,9 @@ def painel_backup():
 @login_obrigatorio
 @admin_obrigatorio
 def testar_backup_supabase():
-    caminho = gerar_backup_sistema()
+    caminho, upload_ok, upload_mensagem = gerar_backup_sistema()
 
-    flash("Backup local gerado e tentativa de envio ao Supabase executada.", "sucesso")
+    flash(upload_mensagem, "sucesso" if upload_ok else "erro")
     return redirect(url_for("painel_backup"))
 
 @app.route("/backup/manual", methods=["POST"])
