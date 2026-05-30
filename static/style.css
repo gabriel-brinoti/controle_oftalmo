@@ -7838,3 +7838,18 @@ button,
     box-shadow:
         0 10px 30px rgba(15, 23, 42, .06);
 }
+
+.btn-restaurar-backup {
+    background: #dc2626;
+    color: white;
+    border: none;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.btn-restaurar-backup:hover {
+    background: #b91c1c;
+}
+
