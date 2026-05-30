@@ -7853,3 +7853,8 @@ button,
     background: #b91c1c;
 }
 
+.sidebar-nav a.active {
+    background: #ffffff;
+    color: #0b6a6a;
+    font-weight: 700;
+}
