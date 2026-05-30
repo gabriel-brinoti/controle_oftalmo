@@ -3892,5 +3892,22 @@ def restaurar_backup_local(nome_arquivo):
         flash(f"Erro ao restaurar backup: {erro}", "erro")
         return redirect(url_for("painel_backup"))
 
+@app.route("/backup_automatico_9182")
+def backup_automatico_externo():
+    try:
+        caminho = gerar_backup_sistema()
+
+        return {
+            "status": "ok",
+            "mensagem": "Backup executado",
+            "arquivo": os.path.basename(caminho)
+        }, 200
+
+    except Exception as erro:
+        return {
+            "status": "erro",
+            "mensagem": str(erro)
+        }, 500
+
 if __name__ == "__main__":
     app.run(debug=True)
