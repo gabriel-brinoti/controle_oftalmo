@@ -3895,13 +3895,13 @@ def restaurar_backup_local(nome_arquivo):
 @app.route("/backup_automatico_9182")
 def backup_automatico_externo():
     try:
-        caminho = gerar_backup_sistema()
+        caminho, upload_ok, upload_mensagem = gerar_backup_sistema()
 
         return {
-            "status": "ok",
-            "mensagem": "Backup executado",
+            "status": "ok" if upload_ok else "erro",
+            "mensagem": upload_mensagem,
             "arquivo": os.path.basename(caminho)
-        }, 200
+        }, 200 if upload_ok else 500
 
     except Exception as erro:
         return {
