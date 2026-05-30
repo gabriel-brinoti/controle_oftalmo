@@ -541,6 +541,9 @@ def enviar_backup_para_supabase(caminho_arquivo):
     bucket = bucket.strip().strip("/")
     storage_path = storage_path.strip().lstrip("/")
     
+    supabase_url = supabase_url.strip().rstrip("/")
+    supabase_url = supabase_url.replace("/rest/v1", "").replace("/storage/v1", "")
+
     url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{storage_path}"
 
     headers = {
