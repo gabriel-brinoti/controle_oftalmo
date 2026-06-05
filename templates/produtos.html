@@ -38,6 +38,7 @@
 
     <section class="products-filter-premium">
         <form method="GET">
+            <input type="hidden" name="pagina" value="1">
             <div>
                 <label>Buscar produto ou lote</label>
                 <input type="text" name="busca" value="{{ busca }}" placeholder="Digite o nome ou lote">
@@ -46,25 +47,26 @@
             <div>
                 <label>Categoria</label>
                 <select name="categoria_id">
-    <option value="">Todas</option>
+                    <option value="">Todas</option>
 
-    {% for categoria in categorias %}
-    <option value="{{ categoria.id }}"
-        {% if categoria_id and categoria_id|int == categoria.id %}selected{% endif %}>
-        {{ categoria.nome }}
-    </option>
-    {% endfor %}
-</select>
+                    {% for categoria in categorias %}
+                    <option value="{{ categoria.id }}" {% if categoria_id and categoria_id|int==categoria.id
+                        %}selected{% endif %}>
+                        {{ categoria.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
             </div>
 
             <div>
                 <label>Status</label>
                 <select name="filtro">
-    <option value="todos" {% if filtro=='todos' %}selected{% endif %}>Todos</option>
-    <option value="vencidos" {% if filtro=='vencidos' %}selected{% endif %}>Vencidos</option>
-    <option value="proximos" {% if filtro=='proximos' %}selected{% endif %}>Próximos do vencimento</option>
-    <option value="estoque" {% if filtro=='estoque' %}selected{% endif %}>Estoque baixo</option>
-</select>
+                    <option value="todos" {% if filtro=='todos' %}selected{% endif %}>Todos</option>
+                    <option value="vencidos" {% if filtro=='vencidos' %}selected{% endif %}>Vencidos</option>
+                    <option value="proximos" {% if filtro=='proximos' %}selected{% endif %}>Próximos do vencimento
+                    </option>
+                    <option value="estoque" {% if filtro=='estoque' %}selected{% endif %}>Estoque baixo</option>
+                </select>
             </div>
 
             <button type="submit">Filtrar</button>
@@ -247,16 +249,26 @@
         <div class="paginacao">
 
             {% if pagina > 1 %}
-            <a href="{{ url_for('produtos', pagina=pagina-1) }}">
+            <a href="{{ url_for(request.endpoint,
+        tipo_estoque=tipo_estoque,
+        pagina=pagina-1,
+        busca=busca,
+        filtro=filtro,
+        categoria_id=categoria_id
+    ) }}">
                 Anterior
             </a>
             {% endif %}
 
-            <span>
-                Página {{ pagina }} de {{ total_paginas }}
-            </span>
+            <span>Página {{ pagina }} de {{ total_paginas }}</span>
 
-            {% if pagina < total_paginas %} <a href="{{ url_for('produtos', pagina=pagina+1) }}">
+            {% if pagina < total_paginas %} <a href="{{ url_for(request.endpoint,
+        tipo_estoque=tipo_estoque,
+        pagina=pagina+1,
+        busca=busca,
+        filtro=filtro,
+        categoria_id=categoria_id
+    ) }}">
                 Próxima
                 </a>
                 {% endif %}

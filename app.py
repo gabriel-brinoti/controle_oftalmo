@@ -587,7 +587,7 @@ def gerar_backup_sistema():
 
     conn.close()
 
-    nome = datetime.now().strftime("backup_%Y_%m_%d_%H_%M_%S.json")
+    nome = datetime.now().strftime("Backup_Auto_App_%d-%m-%Y_%Hh%Mm.json")
     caminho = os.path.join(BACKUP_DIR, nome)
 
     with open(caminho, "w", encoding="utf-8") as arquivo:
@@ -631,7 +631,7 @@ def iniciar_backup_automatico():
     scheduler.add_job(
         gerar_backup_sistema,
         "cron",
-        hour=2,
+        hour=5,
         minute=0,
         id="backup_diario_sistema",
         replace_existing=True
