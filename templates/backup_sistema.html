@@ -1,63 +1,76 @@
-
 {% extends "base.html" %}
 {% block conteudo %}
 
 <section class="license-page">
 
-<div class="license-hero">
-<div>
-<span class="dash-eyebrow">Proteção operacional</span>
-<h1>Backups do Sistema</h1>
-<p>Backups automáticos diários às 02:00.</p>
-</div>
-</div>
+    <div class="license-hero">
+        <div>
+            <span class="dash-eyebrow">Proteção operacional</span>
+            <h1>Backups do Sistema</h1>
+            <p>Backups automáticos diários às 02:00.</p>
+        </div>
+    </div>
 
-<div class="license-panel">
-<form method="POST" action="{{ url_for('gerar_backup_manual') }}">
-<button type="submit">Gerar backup manual</button>
-</form>
-</div>
+    <div class="license-panel">
+        <form method="POST" action="{{ url_for('gerar_backup_manual') }}">
+            <button type="submit">Gerar backup manual</button>
+        </form>
+    </div>
 
 
-<div class="license-panel">
-<h2>Backup externo — Supabase Storage</h2>
+    <div class="license-panel">
+        <h2>Backup externo — Supabase Storage</h2>
 
-{% if supabase_configurado %}
-<p><strong>Status:</strong> configurado</p>
-<p><strong>Bucket:</strong> {{ supabase_bucket }}</p>
-<p>Os backups automáticos também serão enviados para o Supabase Storage.</p>
-{% else %}
-<p><strong>Status:</strong> não configurado</p>
-<p>Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_BACKUP_BUCKET no Render.</p>
-{% endif %}
+        {% if supabase_configurado %}
+        <p><strong>Status:</strong> configurado</p>
+        <p><strong>Bucket:</strong> {{ supabase_bucket }}</p>
+        <p>Os backups automáticos também serão enviados para o Supabase Storage.</p>
+        {% else %}
+        <p><strong>Status:</strong> não configurado</p>
+        <p>Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_BACKUP_BUCKET no Render.</p>
+        {% endif %}
 
-<form method="POST" action="{{ url_for('testar_backup_supabase') }}">
-<button type="submit">Gerar backup e enviar para Supabase</button>
-</form>
-</div>
+        <form method="POST" action="{{ url_for('testar_backup_supabase') }}">
+            <button type="submit">Gerar backup e enviar para Supabase</button>
+        </form>
+    </div>
 
-<div class="license-panel">
-<h2>Últimos backups</h2>
+    <div class="license-panel">
+        <h2>Últimos backups</h2>
 
-<div class="audit-timeline-list">
-{% for backup in backups %}
-<div class="audit-timeline-item">
-<div class="audit-avatar">B</div>
+        <div class="audit-timeline-list">
+            {% if backups %}
 
-<div>
-<strong>{{ backup.nome }}</strong>
-<span>{{ backup.tamanho }} KB</span>
-<small>{{ backup.modificado }}</small>
-</div>
-</div>
-{% else %}
-<div class="realtime-empty">
-Nenhum backup encontrado.
-</div>
-{% endfor %}
-</div>
-</div>
+            {% for backup in backups %}
+            <div class="audit-timeline-item">
+                <div class="audit-avatar">B</div>
 
+                <div>
+                    <strong>{{ backup.nome }}</strong>
+                    <span>{{ backup.tamanho }} KB</span>
+                    <small>{{ backup.modificado }}</small>
+
+                    <form method="POST" action="{{ url_for('restaurar_backup_local', nome_arquivo=backup.nome) }}"
+                        onsubmit="return confirm('ATENÇÃO: isso substituirá os produtos, categorias e movimentações atuais. O sistema criará um backup antes. Deseja continuar?')">
+
+                        <button type="submit" class="btn-restaurar-backup">
+                            Restaurar
+                        </button>
+
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+
+            {% else %}
+
+            <div class="realtime-empty">
+                Nenhum backup encontrado.
+            </div>
+
+            {% endif %}
+        </div>
+    </div>
 </section>
 
 {% endblock %}

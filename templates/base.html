@@ -21,25 +21,87 @@
         </div>
 
         <nav class="sidebar-nav ho-v2-nav">
-            {% if session.get('perfil', 'admin') == 'admin' %}
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('dashboard_tempo_real') }}">Tempo Real</a>
-                <a href="{{ url_for('produtos') }}">Estoque</a>
-                <a href="{{ url_for('codigo_barras') }}">Scanner</a>
-                <a href="{{ url_for('historico') }}">Histórico</a>
-                {% if session.get('perfil', 'admin') == 'admin' %}<a href="{{ url_for('auditoria_usuarios') }}">Auditoria</a>{% endif %}
-                <a href="{{ url_for('ordem_compra') }}">Ordem de Compra</a>
-                <a href="{{ url_for('categorias') }}">Categorias</a>
-                <a href="{{ url_for('relatorios') }}">Relatórios</a>
-                <a href="{{ url_for('config_alertas') }}">Alertas</a>
-                <a href="{{ url_for('usuarios') }}">Usuários</a>
-                <a href="{{ url_for('configuracoes') }}">Configurações</a>
-            {% else %}
-                <a href="{{ url_for('produtos') }}">Estoque</a>
-                <a href="{{ url_for('codigo_barras') }}">Scanner</a>
-                <a href="{{ url_for('historico') }}">Histórico</a>
-            {% endif %}
-        </nav>
+    {% if session.get('perfil', 'admin') == 'admin' %}
+
+      <a href="{{ url_for('dashboard') }}"
+   class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+   Dashboard
+</a>
+
+        <a href="{{ url_for('dashboard_tempo_real') }}"
+           class="{{ 'active' if request.endpoint == 'dashboard_tempo_real' else '' }}">
+           Tempo Real
+        </a>
+
+        <a href="{{ url_for('produtos') }}"
+           class="{{ 'active' if request.endpoint in ['produtos', 'novo_produto', 'editar_produto'] else '' }}">
+           Estoque
+        </a>
+
+        <a href="{{ url_for('codigo_barras') }}"
+           class="{{ 'active' if request.endpoint == 'codigo_barras' else '' }}">
+           Scanner
+        </a>
+
+        <a href="{{ url_for('historico') }}"
+   class="{% if request.endpoint == 'historico' or request.endpoint == 'historico_produto' %}active{% endif %}">
+   Histórico
+</a>
+
+        <a href="{{ url_for('auditoria_usuarios') }}"
+           class="{{ 'active' if request.endpoint == 'auditoria_usuarios' else '' }}">
+           Auditoria
+        </a>
+
+        <a href="{{ url_for('ordem_compra') }}"
+           class="{{ 'active' if request.endpoint == 'ordem_compra' else '' }}">
+           Ordem de Compra
+        </a>
+
+        <a href="{{ url_for('categorias') }}"
+           class="{{ 'active' if request.endpoint == 'categorias' else '' }}">
+           Categorias
+        </a>
+
+        <a href="{{ url_for('relatorios') }}"
+           class="{{ 'active' if request.endpoint == 'relatorios' else '' }}">
+           Relatórios
+        </a>
+
+        <a href="{{ url_for('config_alertas') }}"
+           class="{{ 'active' if request.endpoint == 'config_alertas' else '' }}">
+           Alertas
+        </a>
+
+        <a href="{{ url_for('usuarios') }}"
+           class="{{ 'active' if request.endpoint in ['usuarios', 'novo_usuario', 'editar_usuario'] else '' }}">
+           Usuários
+        </a>
+
+        <a href="{{ url_for('configuracoes') }}"
+           class="{{ 'active' if request.endpoint == 'configuracoes' else '' }}">
+           Configurações
+        </a>
+
+    {% else %}
+
+        <a href="{{ url_for('produtos') }}"
+           class="{{ 'active' if request.endpoint in ['produtos', 'novo_produto', 'editar_produto'] else '' }}">
+           Estoque
+        </a>
+
+        <a href="{{ url_for('codigo_barras') }}"
+           class="{{ 'active' if request.endpoint == 'codigo_barras' else '' }}">
+           Scanner
+        </a>
+
+        <a href="{{ url_for('historico') }}"
+           class="{{ 'active' if request.endpoint == 'historico' else '' }}">
+           Histórico
+        </a>
+
+    {% endif %}
+</nav>
 
         <div class="ho-contact-card">
             <strong>16 3721-5919</strong>

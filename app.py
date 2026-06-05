@@ -538,6 +538,12 @@ def enviar_backup_para_supabase(caminho_arquivo):
     nome_arquivo = os.path.basename(caminho_arquivo)
     storage_path = f"automaticos/{nome_arquivo}"
 
+    bucket = bucket.strip().strip("/")
+    storage_path = storage_path.strip().lstrip("/")
+    
+    supabase_url = supabase_url.strip().rstrip("/")
+    supabase_url = supabase_url.replace("/rest/v1", "").replace("/storage/v1", "")
+
     url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{storage_path}"
 
     headers = {
@@ -587,7 +593,13 @@ def gerar_backup_sistema():
 
     conn.close()
 
+
     nome = datetime.now().strftime("Backup_Auto_App_%d-%m-%Y_%Hh%Mm.json")
+
+    nome = datetime.now().strftime(
+    "Backup_Completo_%d-%m-%Y_%Hh%Mm.json"
+)
+
     caminho = os.path.join(BACKUP_DIR, nome)
 
     with open(caminho, "w", encoding="utf-8") as arquivo:
@@ -604,7 +616,7 @@ def gerar_backup_sistema():
 
     limpar_backups_antigos()
 
-    return caminho
+    return caminho, upload_ok, upload_mensagem
 
 def limpar_backups_antigos(limite=30):
     garantir_pasta_backup()
@@ -669,9 +681,9 @@ def painel_backup():
 @login_obrigatorio
 @admin_obrigatorio
 def testar_backup_supabase():
-    caminho = gerar_backup_sistema()
+    caminho, upload_ok, upload_mensagem = gerar_backup_sistema()
 
-    flash("Backup local gerado e tentativa de envio ao Supabase executada.", "sucesso")
+    flash(upload_mensagem, "sucesso" if upload_ok else "erro")
     return redirect(url_for("painel_backup"))
 
 @app.route("/backup/manual", methods=["POST"])
@@ -3778,6 +3790,128 @@ def importar_estoque():
             return redirect(url_for("importar_estoque"))
 
     return render_template("importar_estoque.html")
+
+@app.route("/backup/restaurar_local/<nome_arquivo>", methods=["POST"])
+@login_obrigatorio
+@admin_obrigatorio
+def restaurar_backup_local(nome_arquivo):
+    try:
+        # Backup de segurança antes de restaurar
+        gerar_backup_sistema()
+
+        caminho = os.path.join(BACKUP_DIR, nome_arquivo)
+
+        if not os.path.exists(caminho):
+            flash("Arquivo de backup não encontrado.", "erro")
+            return redirect(url_for("painel_backup"))
+
+        with open(caminho, "r", encoding="utf-8") as arquivo:
+            backup = json.load(arquivo)
+
+        dados = backup.get("dados", {})
+
+        conn = conectar()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM movimentacoes")
+        cursor.execute("DELETE FROM produtos")
+        cursor.execute("DELETE FROM categorias")
+
+        for categoria in dados.get("categorias", []):
+            cursor.execute("""
+                INSERT INTO categorias (id, nome, descricao, criado_em)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+            """, (
+                categoria.get("id"),
+                categoria.get("nome"),
+                categoria.get("descricao"),
+                categoria.get("criado_em")
+            ))
+
+        for produto in dados.get("produtos", []):
+            cursor.execute("""
+                INSERT INTO produtos (
+                    id, nome, categoria_id, lote, codigo_barras,
+                    data_vencimento, data_abertura, validade_apos_aberto_dias,
+                    quantidade_atual, estoque_padrao, limite_alerta,
+                    observacoes, tipo_estoque, criado_em
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+            """, (
+                produto.get("id"),
+                produto.get("nome"),
+                produto.get("categoria_id"),
+                produto.get("lote"),
+                produto.get("codigo_barras"),
+                produto.get("data_vencimento"),
+                produto.get("data_abertura"),
+                produto.get("validade_apos_aberto_dias"),
+                produto.get("quantidade_atual"),
+                produto.get("estoque_padrao"),
+                produto.get("limite_alerta"),
+                produto.get("observacoes"),
+                produto.get("tipo_estoque", "almoxarifado"),
+                produto.get("criado_em")
+            ))
+
+        for mov in dados.get("movimentacoes", []):
+            cursor.execute("""
+                INSERT INTO movimentacoes (
+                    id, produto_id, produto_nome, tipo_movimentacao,
+                    quantidade, estoque_anterior, estoque_atual,
+                    observacao, tipo_estoque, estoque_origem,
+                    estoque_destino, usuario_id, usuario_nome,
+                    data_movimentacao
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+            """, (
+                mov.get("id"),
+                mov.get("produto_id"),
+                mov.get("produto_nome"),
+                mov.get("tipo_movimentacao"),
+                mov.get("quantidade"),
+                mov.get("estoque_anterior"),
+                mov.get("estoque_atual"),
+                mov.get("observacao"),
+                mov.get("tipo_estoque"),
+                mov.get("estoque_origem"),
+                mov.get("estoque_destino"),
+                mov.get("usuario_id"),
+                mov.get("usuario_nome"),
+                mov.get("data_movimentacao")
+            ))
+
+        cursor.execute("SELECT setval('categorias_id_seq', COALESCE((SELECT MAX(id) FROM categorias), 1))")
+        cursor.execute("SELECT setval('produtos_id_seq', COALESCE((SELECT MAX(id) FROM produtos), 1))")
+        cursor.execute("SELECT setval('movimentacoes_id_seq', COALESCE((SELECT MAX(id) FROM movimentacoes), 1))")
+
+        conn.commit()
+        conn.close()
+
+        flash("Backup restaurado com sucesso. Um backup de segurança foi criado antes da restauração.", "sucesso")
+        return redirect(url_for("produtos"))
+
+    except Exception as erro:
+        flash(f"Erro ao restaurar backup: {erro}", "erro")
+        return redirect(url_for("painel_backup"))
+
+@app.route("/backup_automatico_9182")
+def backup_automatico_externo():
+    try:
+        caminho, upload_ok, upload_mensagem = gerar_backup_sistema()
+
+        return {
+            "status": "ok" if upload_ok else "erro",
+            "mensagem": upload_mensagem,
+            "arquivo": os.path.basename(caminho)
+        }, 200 if upload_ok else 500
+
+    except Exception as erro:
+        return {
+            "status": "erro",
+            "mensagem": str(erro)
+        }, 500
 
 if __name__ == "__main__":
     app.run(debug=True)
