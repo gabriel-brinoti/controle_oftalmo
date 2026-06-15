@@ -47,6 +47,17 @@
 
                 <div>
                     <strong>{{ backup.nome }}</strong>
+
+                    {% if 'Auto_App' in backup.nome %}
+                    <span>Origem: Aplicação</span>
+                    {% elif 'Auto_Render' in backup.nome %}
+                    <span>Origem: Render Cron Job</span>
+                    {% elif 'Manual' in backup.nome %}
+                    <span>Origem: Manual</span>
+                    {% else %}
+                    <span>Origem: Não identificada</span>
+                    {% endif %}
+
                     <span>{{ backup.tamanho }} KB</span>
                     <small>{{ backup.modificado }}</small>
 

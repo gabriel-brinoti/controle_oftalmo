@@ -1330,10 +1330,10 @@ def registrar_movimentacao(
 @estoque_obrigatorio
 def produtos(tipo_estoque=None):
 
-    try:
-        executar_alerta_whatsapp_automatico(forcar=False)
-    except Exception:
-        pass
+    #try:
+    #   executar_alerta_whatsapp_automatico(forcar=False)
+    #except Exception:
+    #    pass
 
     filtro = request.args.get("filtro", "todos")
     busca = request.args.get("busca", "").strip()
