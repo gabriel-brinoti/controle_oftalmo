@@ -39,8 +39,15 @@ ALERTA_DIAS = 5
 
 def conectar():
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL não configurada. Configure no .env local ou nas variáveis do Render.")
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        raise RuntimeError(
+            "DATABASE_URL não configurada. Configure no .env local ou nas variáveis do Render."
+        )
+
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor,
+        connect_timeout=10
+    )
 
 
 def criar_banco():
@@ -972,10 +979,10 @@ def enviar_alerta_whatsapp_manual():
 @admin_obrigatorio
 def dashboard():
 
-    try:
-        executar_alerta_whatsapp_automatico(forcar=False)
-    except Exception:
-        pass
+   #try:
+    #   executar_alerta_whatsapp_automatico(forcar=False)
+    #xcept Exception:
+    #   pass
 
     conn = conectar()
     cursor = conn.cursor()
