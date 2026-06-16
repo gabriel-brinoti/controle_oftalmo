@@ -3501,6 +3501,7 @@ def scanner_baixa_rapida():
     flash(f"Baixa rápida realizada: {produto['nome']} (-{quantidade}).", "sucesso")
     return redirect(url_for("codigo_barras", modo="continuo", scanner_status="sucesso"))
 
+
 @app.route("/alertas_visual")
 @login_obrigatorio
 @licenca_obrigatoria
@@ -3577,13 +3578,14 @@ def config_alertas():
     historico = cursor.fetchall()
     conn.close()
 
-    mensagem_preview, _ = montar_mensagem_alertas()
+    #mensagem_preview, _ = montar_mensagem_alertas()
+    mensagem_preview = ""
 
     return render_template(
         "config_alertas.html",
         config=config,
         historico=historico,
-        mensagem_preview=mensagem_preview
+       mensagem_preview=mensagem_preview
     )
 
 
@@ -3600,7 +3602,6 @@ def testar_alertas():
         flash(mensagem, "erro")
 
     return redirect(url_for("config_alertas"))
-
 
 
 def senha_padrao_ativa():
