@@ -67,7 +67,7 @@
                     {% for item in produtos_criticos[:5] %}
                     <tr>
                         <td>{{ item.produto.nome }}</td>
-                        <td>{{ 'Farmácia Satélite' if item.produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</td>
+                        <td>{{ nome_tipo_estoque(item.produto.tipo_estoque) }}</td>
                         <td>{{ item.produto.quantidade_atual }}</td>
                         <td><span class="ho-status-chip {{ item.status.tipo }}">{{ item.status.texto }}</span></td>
                     </tr>
@@ -100,7 +100,7 @@
                     <div class="ho-move-icon">⇄</div>
                     <div>
                         <strong>{{ mov.produto_nome }}</strong>
-                        <span>{{ 'Farmácia Satélite' if mov.estoque_origem == 'farmacia_satelite' else 'Almoxarifado' }} → {{ 'Farmácia Satélite' if mov.estoque_destino == 'farmacia_satelite' else 'Almoxarifado' }}</span>
+                        <span>{{ nome_tipo_estoque(mov.estoque_origem) }} → {{ nome_tipo_estoque(mov.estoque_destino) }}</span>
                     </div>
                     <small>{{ mov.quantidade }}</small>
                 </div>

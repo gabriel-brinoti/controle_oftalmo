@@ -15,8 +15,9 @@
 
 <label>Tipo de estoque</label>
 <select name="tipo_estoque" required>
-    <option value="almoxarifado" {% if not produto or produto.tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
-    <option value="farmacia_satelite" {% if produto and produto.tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+    {% for codigo, nome in estoques_sistema.items() %}
+    <option value="{{ codigo }}" {% if (not produto and codigo == 'almoxarifado') or (produto and produto.tipo_estoque == codigo) %}selected{% endif %}>{{ nome }}</option>
+    {% endfor %}
 </select>
 
 <label>Lote</label>

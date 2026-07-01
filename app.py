@@ -35,6 +35,18 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 ALERTA_DIAS = 5
+ESTOQUES = {
+    "almoxarifado": "Almoxarifado",
+    "farmacia_satelite": "Farmácia Satélite",
+    "carrinho_urgencia": "Carrinho de Urgência",
+}
+ROTAS_ESTOQUE = {
+    "almoxarifado": "almoxarifado",
+    "farmacia": "farmacia_satelite",
+    "farmacia_satelite": "farmacia_satelite",
+    "carrinho": "carrinho_urgencia",
+    "carrinho_urgencia": "carrinho_urgencia",
+}
 
 
 def conectar():
@@ -221,6 +233,7 @@ def criar_banco():
         ))
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -267,6 +280,7 @@ def garantir_tabela_usuarios():
         ))
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -283,6 +297,7 @@ def buscar_usuario_login(usuario):
         LIMIT 1
     """, (usuario,))
     user = cursor.fetchone()
+    print("FECHANDO CONEXAO")
     conn.close()
     return user
 
@@ -298,6 +313,7 @@ def listar_usuarios():
         ORDER BY nome
     """)
     usuarios = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
     return usuarios
 
@@ -340,6 +356,7 @@ def obter_licenca():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM licencas ORDER BY id LIMIT 1")
     licenca = cursor.fetchone()
+    print("FECHANDO CONEXAO")
     conn.close()
     return licenca
 
@@ -442,9 +459,73 @@ def formatar_data(valor):
 
 
 def nome_tipo_estoque(tipo):
-    if tipo == "farmacia_satelite":
-        return "Farmácia Satélite"
-    return "Almoxarifado"
+    return ESTOQUES.get(tipo, "Almoxarifado")
+
+
+def normalizar_tipo_estoque_url(tipo):
+    if tipo is None:
+        return None
+    return ROTAS_ESTOQUE.get(tipo)
+
+
+@app.context_processor
+def utilitarios_templates():
+    return {
+        "nome_tipo_estoque": nome_tipo_estoque,
+        "estoques_sistema": ESTOQUES,
+    }
+
+
+def chave_produto_estoque(produto):
+    return (
+        str(produto["nome"]).strip().lower(),
+        produto["tipo_estoque"]
+    )
+
+
+def calcular_resumos_estoque_agregado(produtos):
+    resumos = {}
+
+    for produto in produtos:
+        chave = chave_produto_estoque(produto)
+        if chave not in resumos:
+            resumos[chave] = {
+                "quantidade_total": 0,
+                "limite_alerta": 0,
+                "estoque_padrao": 0,
+                "lotes": [],
+            }
+
+        resumo = resumos[chave]
+        resumo["quantidade_total"] += produto["quantidade_atual"] or 0
+        resumo["limite_alerta"] = max(resumo["limite_alerta"], produto["limite_alerta"] or 0)
+        resumo["estoque_padrao"] = max(resumo["estoque_padrao"], produto["estoque_padrao"] or 0)
+        resumo["lotes"].append(produto["lote"] or "-")
+
+    return resumos
+
+
+def produto_estoque_agregado_baixo(produto, resumos):
+    resumo = resumos.get(chave_produto_estoque(produto))
+    if not resumo:
+        return produto["quantidade_atual"] <= produto["limite_alerta"]
+    return resumo["quantidade_total"] <= resumo["limite_alerta"]
+
+
+def ajustar_status_por_estoque_agregado(produto, status, resumos):
+    resumo = resumos.get(chave_produto_estoque(produto))
+    if not resumo:
+        return status
+
+    status = dict(status)
+    status["quantidade_total_nome"] = resumo["quantidade_total"]
+    status["limite_alerta_total"] = resumo["limite_alerta"]
+
+    if status["texto"] in ["Estoque zerado", "Estoque baixo"] and resumo["quantidade_total"] > resumo["limite_alerta"]:
+        status["tipo"] = "success"
+        status["texto"] = "Produto OK"
+
+    return status
 
 
 
@@ -598,6 +679,7 @@ def gerar_backup_sistema():
         except Exception:
             backup["dados"][tabela] = []
 
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -794,6 +876,7 @@ def restaurar_backup():
             cursor.execute("SELECT setval('movimentacoes_id_seq', COALESCE((SELECT MAX(id) FROM movimentacoes), 1))")
 
             conn.commit()
+            print("FECHANDO CONEXAO")
             conn.close()
 
             flash("Backup restaurado com sucesso.", "sucesso")
@@ -930,6 +1013,7 @@ def renovar_licenca():
         ))
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Licença renovada com sucesso.", "sucesso")
@@ -944,6 +1028,7 @@ def bloquear_licenca():
     cursor = conn.cursor()
     cursor.execute("UPDATE licencas SET status = 'bloqueado', atualizado_em = NOW() WHERE id = (SELECT id FROM licencas ORDER BY id LIMIT 1)")
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Licença bloqueada.", "sucesso")
@@ -958,6 +1043,7 @@ def ativar_licenca():
     cursor = conn.cursor()
     cursor.execute("UPDATE licencas SET status = 'ativo', atualizado_em = NOW() WHERE id = (SELECT id FROM licencas ORDER BY id LIMIT 1)")
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Licença ativada.", "sucesso")
@@ -1032,6 +1118,7 @@ def dashboard():
     """)
     resumo_mov = cursor.fetchone()
 
+    print("FECHANDO CONEXAO")
     conn.close()
 
     produtos_status = []
@@ -1059,9 +1146,11 @@ def dashboard():
     previsoes = []
 
     consumo_por_nome = {item["produto_nome"]: item["total_saida"] or 0 for item in consumo_top}
+    resumos_estoque = calcular_resumos_estoque_agregado(produtos)
+    grupos_estoque_contados = set()
 
     for produto in produtos:
-        status = calcular_status(produto)
+        status = ajustar_status_por_estoque_agregado(produto, calcular_status(produto), resumos_estoque)
         produtos_status.append({"produto": produto, "status": status})
         texto = status["texto"].lower()
 
@@ -1080,11 +1169,17 @@ def dashboard():
                 contadores["almox_vencendo"] += 1
             alertas_inteligentes.append(f"{produto['nome']} precisa de atenção: {status['texto']}.")
 
-        if produto["quantidade_atual"] == 0:
+        resumo_produto = resumos_estoque.get(chave_produto_estoque(produto), {})
+        quantidade_total_produto = resumo_produto.get("quantidade_total", produto["quantidade_atual"])
+        estoque_agregado_baixo = produto_estoque_agregado_baixo(produto, resumos_estoque)
+        chave_estoque = chave_produto_estoque(produto)
+        contar_estoque = chave_estoque not in grupos_estoque_contados
+
+        if quantidade_total_produto == 0 and contar_estoque:
             contadores["estoque_zerado"] += 1
             estoque_zerado += 1
             alertas_inteligentes.append(f"{produto['nome']} está com estoque zerado.")
-        elif produto["quantidade_atual"] <= produto["limite_alerta"]:
+        elif estoque_agregado_baixo and contar_estoque:
             contadores["estoque_baixo"] += 1
             if produto["tipo_estoque"] == "farmacia_satelite":
                 contadores["farmacia_baixo"] += 1
@@ -1092,11 +1187,13 @@ def dashboard():
                 contadores["almox_baixo"] += 1
             estoque_baixo += 1
             alertas_inteligentes.append(f"{produto['nome']} está abaixo do limite de estoque.")
-        else:
+        elif contar_estoque:
             estoque_ok += 1
 
-        if produto["quantidade_atual"] <= produto["limite_alerta"]:
+        if estoque_agregado_baixo and contar_estoque:
             contadores["aguardando_compra"] += 1
+
+        grupos_estoque_contados.add(chave_estoque)
 
         saidas_30 = consumo_por_nome.get(produto["nome"], 0)
         if saidas_30 > 0:
@@ -1162,13 +1259,17 @@ def montar_central_categorias():
         estoque_baixo = 0
         vencendo = 0
         vencidos = 0
+        resumos_estoque = calcular_resumos_estoque_agregado(produtos_cat)
+        grupos_estoque_contados = set()
 
         for produto in produtos_cat:
-            status = calcular_status(produto)
+            status = ajustar_status_por_estoque_agregado(produto, calcular_status(produto), resumos_estoque)
             texto = status["texto"].lower()
+            chave_estoque = chave_produto_estoque(produto)
 
-            if produto["quantidade_atual"] <= produto["limite_alerta"]:
+            if produto_estoque_agregado_baixo(produto, resumos_estoque) and chave_estoque not in grupos_estoque_contados:
                 estoque_baixo += 1
+                grupos_estoque_contados.add(chave_estoque)
 
             if "vencido" in texto:
                 vencidos += 1
@@ -1184,7 +1285,7 @@ def montar_central_categorias():
             "vencendo": vencendo,
             "vencidos": vencidos
         })
-
+    print("FECHANDO CONEXAO")
     conn.close()
     return dados
 
@@ -1222,6 +1323,7 @@ def nova_categoria():
             conn.rollback()
             flash("Essa categoria já existe.", "erro")
         finally:
+            print("FECHANDO CONEXAO")
             conn.close()
 
     return render_template("nova_categoria.html")
@@ -1246,6 +1348,7 @@ def editar_categoria(id):
                 cursor.execute("UPDATE categorias SET nome = %s, descricao = %s WHERE id = %s", (nome, descricao, id))
                 conn.commit()
                 flash("Categoria atualizada com sucesso.", "sucesso")
+                print("FECHANDO CONEXAO")
                 conn.close()
                 return redirect(url_for("categorias"))
             except psycopg2.IntegrityError:
@@ -1254,6 +1357,7 @@ def editar_categoria(id):
 
     cursor.execute("SELECT * FROM categorias WHERE id = %s", (id,))
     categoria = cursor.fetchone()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     if not categoria:
@@ -1280,6 +1384,7 @@ def excluir_categoria(id):
         conn.commit()
         flash("Categoria excluída com sucesso.", "sucesso")
 
+    print("FECHANDO CONEXAO")
     conn.close()
     return redirect(url_for("categorias"))
 
@@ -1289,6 +1394,7 @@ def listar_categorias():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM categorias ORDER BY nome")
     categorias = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
     return categorias
 
@@ -1346,14 +1452,10 @@ def produtos(tipo_estoque=None):
     busca = request.args.get("busca", "").strip()
     categoria_id = request.args.get("categoria_id", "").strip()
 
-    if tipo_estoque not in [None, "almoxarifado", "farmacia"]:
+    if tipo_estoque not in [None, "almoxarifado", "farmacia", "farmacia_satelite", "carrinho", "carrinho_urgencia"]:
         tipo_estoque = None
 
-    tipo_banco = None
-    if tipo_estoque == "almoxarifado":
-        tipo_banco = "almoxarifado"
-    elif tipo_estoque == "farmacia":
-        tipo_banco = "farmacia_satelite"
+    tipo_banco = normalizar_tipo_estoque_url(tipo_estoque)
 
     conn = conectar()
     cursor = conn.cursor()
@@ -1382,9 +1484,11 @@ def produtos(tipo_estoque=None):
 
     cursor.execute(query, params)
     produtos_lista = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     categorias_lista = listar_categorias()
+    resumos_estoque = calcular_resumos_estoque_agregado(produtos_lista)
     produtos_status = []
     produtos_vencidos = []
 
@@ -1392,7 +1496,7 @@ def produtos(tipo_estoque=None):
     por_pagina = 3
 
     for produto in produtos_lista:
-        status = calcular_status(produto)
+        status = ajustar_status_por_estoque_agregado(produto, calcular_status(produto), resumos_estoque)
         texto = status["texto"].lower()
         vencido = produto_esta_vencido(produto)
         mostrar = True
@@ -1402,7 +1506,7 @@ def produtos(tipo_estoque=None):
         elif filtro == "proximos":
             mostrar = "vence" in texto and not vencido
         elif filtro == "estoque":
-            mostrar = "estoque" in texto
+            mostrar = produto_estoque_agregado_baixo(produto, resumos_estoque)
 
         item_status = {"produto": produto, "status": status, "vencido": vencido}
 
@@ -1457,11 +1561,13 @@ def baixar_estoque(id):
     produto = cursor.fetchone()
 
     if not produto:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if produto_esta_vencido(produto):
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto vencido bloqueado para uso. Faça descarte ou ajuste administrativo.", "erro")
         return redirect(request.referrer or url_for("produtos"))
@@ -1470,6 +1576,7 @@ def baixar_estoque(id):
     estoque_anterior = produto["quantidade_atual"]
 
     if quantidade > estoque_anterior:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Não é possível baixar mais do que o estoque atual.", "erro")
         return redirect(request.referrer or url_for("produtos"))
@@ -1480,6 +1587,7 @@ def baixar_estoque(id):
     registrar_movimentacao(cursor, id, produto["nome"], "retirada", quantidade, estoque_anterior, estoque_atual, observacao, produto["tipo_estoque"])
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Estoque baixado e histórico registrado com sucesso.", "sucesso")
@@ -1508,6 +1616,7 @@ def repor_estoque(id):
     produto = cursor.fetchone()
 
     if not produto:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
@@ -1519,6 +1628,7 @@ def repor_estoque(id):
     registrar_movimentacao(cursor, id, produto["nome"], "reposicao", quantidade, estoque_anterior, estoque_atual, observacao, produto["tipo_estoque"])
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Estoque reposto e histórico registrado com sucesso.", "sucesso")
@@ -1585,6 +1695,7 @@ def devolver_estoque(id):
     produto = cursor.fetchone()
 
     if not produto:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
@@ -1596,6 +1707,7 @@ def devolver_estoque(id):
     registrar_movimentacao(cursor, id, produto["nome"], "devolucao", quantidade, estoque_anterior, estoque_atual, observacao, produto["tipo_estoque"])
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Produto devolvido ao estoque e histórico registrado com sucesso.", "sucesso")
@@ -1616,7 +1728,7 @@ def transferir_estoque(id):
     observacao = request.form.get("observacao", "").strip()
     destino = request.form.get("destino", "").strip()
 
-    if destino not in ["almoxarifado", "farmacia_satelite"]:
+    if destino not in ESTOQUES:
         flash("Estoque de destino inválido.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
@@ -1631,22 +1743,26 @@ def transferir_estoque(id):
     origem = cursor.fetchone()
 
     if not origem:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto de origem não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if produto_esta_vencido(origem):
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto vencido bloqueado para transferência. Faça descarte ou ajuste administrativo.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
 
     if origem["tipo_estoque"] == destino:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("O estoque de destino deve ser diferente do estoque de origem.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if quantidade > origem["quantidade_atual"]:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Não é possível transferir mais do que o estoque atual.", "erro")
         return redirect(request.referrer or url_for("produtos"))
@@ -1751,6 +1867,7 @@ def transferir_estoque(id):
     )
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Transferência realizada com sucesso.", "sucesso")
@@ -1878,6 +1995,7 @@ def novo_produto():
             return render_template("novo_produto.html", categorias=categorias_lista)
 
         finally:
+            print("FECHANDO CONEXAO")
             conn.close()
 
     return render_template("novo_produto.html", categorias=categorias_lista)
@@ -1895,6 +2013,7 @@ def editar_produto(id):
     produto = cursor.fetchone()
 
     if not produto:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto não encontrado.", "erro")
         return redirect(url_for("produtos"))
@@ -1905,6 +2024,7 @@ def editar_produto(id):
         if erros:
             for erro in erros:
                 flash(erro, "erro")
+            print("FECHANDO CONEXAO")
             conn.close()
             return render_template("editar_produto.html", produto=produto, categorias=categorias_lista)
 
@@ -1939,10 +2059,12 @@ def editar_produto(id):
             id
         ))
         conn.commit()
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Produto atualizado com sucesso.", "sucesso")
         return redirect(url_for("produtos"))
 
+    print("FECHANDO CONEXAO")
     conn.close()
     return render_template("editar_produto.html", produto=produto, categorias=categorias_lista)
 
@@ -1956,6 +2078,7 @@ def excluir_produto(id):
     cursor = conn.cursor()
     cursor.execute("DELETE FROM produtos WHERE id = %s", (id,))
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
     flash("Produto excluído com sucesso.", "sucesso")
     return redirect(url_for("produtos"))
@@ -1989,6 +2112,7 @@ def auditoria_usuarios():
     """)
     movimentacoes = cursor.fetchall()
 
+    print("FECHANDO CONEXAO")
     conn.close()
 
     return render_template("auditoria_usuarios.html", resumo=resumo, movimentacoes=movimentacoes)
@@ -2030,6 +2154,7 @@ def historico():
 
     cursor.execute(query, params)
     movimentacoes = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     return render_template(
@@ -2053,6 +2178,7 @@ def historico_produto(id):
     produto = cursor.fetchone()
     cursor.execute("SELECT * FROM movimentacoes WHERE produto_id = %s ORDER BY data_movimentacao DESC", (id,))
     movimentacoes = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     produto_nome = produto["nome"] if produto else "Produto removido"
@@ -2087,20 +2213,25 @@ def montar_painel_relatorios():
     vencendo = []
 
     hoje = date.today()
+    resumos_estoque = calcular_resumos_estoque_agregado(produtos)
+    grupos_estoque_contados = set()
 
     for produto in produtos:
-        status = calcular_status(produto)
+        status = ajustar_status_por_estoque_agregado(produto, calcular_status(produto), resumos_estoque)
         texto = status["texto"].lower()
 
-        if produto["quantidade_atual"] <= produto["limite_alerta"]:
+        chave_estoque = chave_produto_estoque(produto)
+        if produto_estoque_agregado_baixo(produto, resumos_estoque) and chave_estoque not in grupos_estoque_contados:
+            resumo = resumos_estoque[chave_estoque]
             estoque_baixo += 1
             criticos.append({
                 "nome": produto["nome"],
                 "categoria": produto["categoria_nome"],
-                "quantidade": produto["quantidade_atual"],
+                "quantidade": resumo["quantidade_total"],
                 "tipo": "Estoque baixo",
                 "status": "stock"
             })
+            grupos_estoque_contados.add(chave_estoque)
 
         if "vencido" in texto:
             vencidos += 1
@@ -2185,6 +2316,7 @@ def montar_painel_relatorios():
             "estoque": nome_tipo_estoque(mov["tipo_estoque"]) if mov["tipo_estoque"] else "-"
         })
 
+    print("FECHANDO CONEXAO")
     conn.close()
 
     return {
@@ -2345,18 +2477,20 @@ def buscar_produtos_para_relatorio(busca="", tipo_estoque=""):
     query += " ORDER BY produtos.nome"
     cursor.execute(query, params)
     produtos_lista = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
     return produtos_lista
 
 
 def montar_relatorio_produtos(tipo_relatorio, busca="", tipo_estoque=""):
     produtos_lista = buscar_produtos_para_relatorio(busca, tipo_estoque)
+    resumos_estoque = calcular_resumos_estoque_agregado(produtos_lista)
 
     cabecalhos = ["Produto", "Categoria", "Local", "Código de Barras", "Lote", "Vencimento", "Aberto em", "Vence após aberto", "Estoque", "Estoque padrão", "Limite alerta", "Status"]
     linhas = []
 
     for produto in produtos_lista:
-        status = calcular_status(produto)
+        status = ajustar_status_por_estoque_agregado(produto, calcular_status(produto), resumos_estoque)
         texto = status["texto"].lower()
         incluir = True
 
@@ -2417,6 +2551,7 @@ def montar_relatorio_movimentacoes(busca="", tipo_movimentacao="", tipo_estoque=
     query += " ORDER BY data_movimentacao DESC"
     cursor.execute(query, params)
     movimentacoes = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     cabecalhos = ["Data", "Produto", "Usuário", "Local", "Tipo", "Quantidade", "Estoque anterior", "Estoque atual", "Observação"]
@@ -2455,7 +2590,7 @@ def exportar_relatorio():
     tipo_movimentacao = request.args.get("tipo_movimentacao", "").strip()
     tipo_estoque = request.args.get("tipo_estoque", "").strip()
 
-    if tipo_estoque not in ["", "almoxarifado", "farmacia_satelite"]:
+    if tipo_estoque not in ["", *ESTOQUES.keys()]:
         tipo_estoque = ""
 
     if tipo_relatorio == "movimentacoes":
@@ -2475,49 +2610,42 @@ def exportar_relatorio():
     return gerar_pdf(titulo, cabecalhos, linhas, nome_arquivo)
 
 
-def buscar_sugestao_transferencia(produto):
-    outro_estoque = "farmacia_satelite" if produto["tipo_estoque"] == "almoxarifado" else "almoxarifado"
+def buscar_sugestao_transferencia(produto, grupos):
     necessario = max(0, produto["estoque_padrao"] - produto["quantidade_atual"])
 
     if necessario <= 0:
         return None
 
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT *
-        FROM produtos
-        WHERE nome = %s
-          AND COALESCE(lote, '') = COALESCE(%s, '')
-          AND tipo_estoque = %s
-        LIMIT 1
-    """, (
-        produto["nome"],
-        produto["lote"],
-        outro_estoque
-    ))
-    outro = cursor.fetchone()
-    conn.close()
+    nome_normalizado = str(produto["nome"]).strip().lower()
+    outros = sorted(
+        [
+            grupo for grupo in grupos.values()
+            if str(grupo["nome"]).strip().lower() == nome_normalizado
+            and grupo["tipo_estoque"] != produto["tipo_estoque"]
+        ],
+        key=lambda grupo: grupo["quantidade_atual"],
+        reverse=True
+    )
 
-    if not outro:
-        return None
+    for outro in outros:
+        sobra = max(0, outro["quantidade_atual"] - outro["limite_alerta"])
 
-    sobra = max(0, outro["quantidade_atual"] - outro["limite_alerta"])
+        if sobra <= 0:
+            continue
 
-    if sobra <= 0:
-        return None
+        quantidade_transferir = min(necessario, sobra)
 
-    quantidade_transferir = min(necessario, sobra)
+        if quantidade_transferir <= 0:
+            continue
 
-    if quantidade_transferir <= 0:
-        return None
+        return {
+            "origem": outro["tipo_estoque"],
+            "origem_nome": nome_tipo_estoque(outro["tipo_estoque"]),
+            "quantidade": quantidade_transferir,
+            "estoque_disponivel": outro["quantidade_atual"]
+        }
 
-    return {
-        "origem": outro_estoque,
-        "origem_nome": nome_tipo_estoque(outro_estoque),
-        "quantidade": quantidade_transferir,
-        "estoque_disponivel": outro["quantidade_atual"]
-    }
+    return None
 
 
 def buscar_itens_ordem_compra(tipo_estoque=""):
@@ -2528,23 +2656,49 @@ def buscar_itens_ordem_compra(tipo_estoque=""):
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
-        WHERE produtos.quantidade_atual <= produtos.limite_alerta
+        WHERE 1=1
     """
     params = []
-
-    if tipo_estoque:
-        query += " AND produtos.tipo_estoque = %s"
-        params.append(tipo_estoque)
 
     query += " ORDER BY produtos.tipo_estoque, produtos.nome"
 
     cursor.execute(query, params)
     produtos = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     itens = []
 
+    grupos = {}
+
     for produto in produtos:
+        chave = chave_produto_estoque(produto)
+        if chave not in grupos:
+            grupos[chave] = {
+                "id": produto["id"],
+                "nome": produto["nome"],
+                "categoria": produto["categoria_nome"],
+                "lotes": [],
+                "tipo_estoque": produto["tipo_estoque"],
+                "tipo_estoque_nome": nome_tipo_estoque(produto["tipo_estoque"]),
+                "quantidade_atual": 0,
+                "limite_alerta": 0,
+                "estoque_padrao": 0,
+            }
+
+        grupo = grupos[chave]
+        grupo["quantidade_atual"] += produto["quantidade_atual"] or 0
+        grupo["limite_alerta"] = max(grupo["limite_alerta"], produto["limite_alerta"] or 0)
+        grupo["estoque_padrao"] = max(grupo["estoque_padrao"], produto["estoque_padrao"] or 0)
+        grupo["lotes"].append(produto["lote"] or "-")
+
+    for produto in grupos.values():
+        if tipo_estoque and produto["tipo_estoque"] != tipo_estoque:
+            continue
+
+        if produto["quantidade_atual"] > produto["limite_alerta"]:
+            continue
+
         sugestao = max(0, produto["estoque_padrao"] - produto["quantidade_atual"])
 
         if produto["quantidade_atual"] == 0:
@@ -2554,16 +2708,16 @@ def buscar_itens_ordem_compra(tipo_estoque=""):
             nivel = "atencao"
             status = "Atenção"
 
-        sugestao_transferencia = buscar_sugestao_transferencia(produto)
+        sugestao_transferencia = buscar_sugestao_transferencia(produto, grupos)
         acao_sugerida = "Transferir" if sugestao_transferencia else "Comprar"
 
         itens.append({
             "id": produto["id"],
             "nome": produto["nome"],
-            "categoria": produto["categoria_nome"],
-            "lote": produto["lote"] or "-",
+            "categoria": produto["categoria"],
+            "lote": ", ".join(produto["lotes"]),
             "tipo_estoque": produto["tipo_estoque"],
-            "tipo_estoque_nome": nome_tipo_estoque(produto["tipo_estoque"]),
+            "tipo_estoque_nome": produto["tipo_estoque_nome"],
             "quantidade_atual": produto["quantidade_atual"],
             "limite_alerta": produto["limite_alerta"],
             "estoque_padrao": produto["estoque_padrao"],
@@ -2580,7 +2734,8 @@ def buscar_itens_ordem_compra(tipo_estoque=""):
 def separar_itens_por_estoque(itens):
     return {
         "almoxarifado": [item for item in itens if item["tipo_estoque"] == "almoxarifado"],
-        "farmacia_satelite": [item for item in itens if item["tipo_estoque"] == "farmacia_satelite"]
+        "farmacia_satelite": [item for item in itens if item["tipo_estoque"] == "farmacia_satelite"],
+        "carrinho_urgencia": [item for item in itens if item["tipo_estoque"] == "carrinho_urgencia"]
     }
 
 
@@ -2592,7 +2747,7 @@ def separar_itens_por_estoque(itens):
 def ordem_compra():
     tipo_estoque = request.args.get("tipo_estoque", "").strip()
 
-    if tipo_estoque not in ["", "almoxarifado", "farmacia_satelite"]:
+    if tipo_estoque not in ["", *ESTOQUES.keys()]:
         tipo_estoque = ""
 
     itens = buscar_itens_ordem_compra(tipo_estoque)
@@ -2662,7 +2817,7 @@ def exportar_ordem_compra():
     formato = request.args.get("formato", "xlsx")
     tipo_estoque = request.args.get("tipo_estoque", "").strip()
 
-    if tipo_estoque not in ["", "almoxarifado", "farmacia_satelite"]:
+    if tipo_estoque not in ["", *ESTOQUES.keys()]:
         tipo_estoque = ""
 
     if formato not in ["xlsx", "pdf"]:
@@ -2687,6 +2842,7 @@ def obter_configuracao_alerta():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM configuracoes_alerta ORDER BY id LIMIT 1")
     config = cursor.fetchone()
+    print("FECHANDO CONEXAO")
     conn.close()
     return config
 
@@ -2707,6 +2863,7 @@ def registrar_historico_alerta(tipo_alerta, canal, destino, conteudo, status, er
         erro
     ))
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -2720,6 +2877,7 @@ def buscar_produtos_vencendo_para_alerta():
         ORDER BY produtos.tipo_estoque, produtos.nome
     """)
     produtos = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     itens = []
@@ -2747,22 +2905,44 @@ def buscar_estoque_critico_para_alerta():
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
-        WHERE produtos.quantidade_atual <= produtos.limite_alerta
         ORDER BY produtos.tipo_estoque, produtos.nome
     """)
     produtos = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     itens = []
 
+    grupos = {}
+
     for produto in produtos:
+        chave = chave_produto_estoque(produto)
+        if chave not in grupos:
+            grupos[chave] = {
+                "nome": produto["nome"],
+                "categoria": produto["categoria_nome"],
+                "local": nome_tipo_estoque(produto["tipo_estoque"]),
+                "atual": 0,
+                "minimo": 0,
+                "padrao": 0
+            }
+
+        grupo = grupos[chave]
+        grupo["atual"] += produto["quantidade_atual"] or 0
+        grupo["minimo"] = max(grupo["minimo"], produto["limite_alerta"] or 0)
+        grupo["padrao"] = max(grupo["padrao"], produto["estoque_padrao"] or 0)
+
+    for produto in grupos.values():
+        if produto["atual"] > produto["minimo"]:
+            continue
+
         itens.append({
             "nome": produto["nome"],
-            "categoria": produto["categoria_nome"],
-            "local": nome_tipo_estoque(produto["tipo_estoque"]),
-            "atual": produto["quantidade_atual"],
-            "minimo": produto["limite_alerta"],
-            "padrao": produto["estoque_padrao"]
+            "categoria": produto["categoria"],
+            "local": produto["local"],
+            "atual": produto["atual"],
+            "minimo": produto["minimo"],
+            "padrao": produto["padrao"]
         })
 
     return itens
@@ -2955,6 +3135,7 @@ def garantir_tabela_auditoria_scanner():
     """)
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -2987,6 +3168,7 @@ def registrar_auditoria_scanner(codigo_barras, produto_id, produto_nome, tipo_ac
     ))
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -3004,15 +3186,23 @@ def montar_dashboard_tempo_real():
 
     cursor.execute("""
         SELECT COUNT(*) AS total
-        FROM produtos
-        WHERE quantidade_atual <= limite_alerta
+        FROM (
+            SELECT LOWER(TRIM(nome)), tipo_estoque
+            FROM produtos
+            GROUP BY LOWER(TRIM(nome)), tipo_estoque
+            HAVING COALESCE(SUM(quantidade_atual), 0) <= COALESCE(MAX(limite_alerta), 0)
+        ) AS produtos_baixos
     """)
     estoque_baixo = cursor.fetchone()["total"]
 
     cursor.execute("""
         SELECT COUNT(*) AS total
-        FROM produtos
-        WHERE quantidade_atual <= 0
+        FROM (
+            SELECT LOWER(TRIM(nome)), tipo_estoque
+            FROM produtos
+            GROUP BY LOWER(TRIM(nome)), tipo_estoque
+            HAVING COALESCE(SUM(quantidade_atual), 0) <= 0
+        ) AS produtos_zerados
     """)
     estoque_zerado = cursor.fetchone()["total"]
 
@@ -3071,11 +3261,18 @@ def montar_dashboard_tempo_real():
     produtos_mais_movimentados = cursor.fetchall()
 
     cursor.execute("""
-        SELECT produtos.*, categorias.nome AS categoria_nome
+        SELECT
+            MIN(produtos.id) AS id,
+            MIN(produtos.nome) AS nome,
+            MIN(categorias.nome) AS categoria_nome,
+            produtos.tipo_estoque,
+            COALESCE(SUM(produtos.quantidade_atual), 0) AS quantidade_atual,
+            COALESCE(MAX(produtos.limite_alerta), 0) AS limite_alerta
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
-        WHERE produtos.quantidade_atual <= produtos.limite_alerta
-        ORDER BY produtos.quantidade_atual ASC
+        GROUP BY LOWER(TRIM(produtos.nome)), produtos.tipo_estoque
+        HAVING COALESCE(SUM(produtos.quantidade_atual), 0) <= COALESCE(MAX(produtos.limite_alerta), 0)
+        ORDER BY quantidade_atual ASC
         LIMIT 8
     """)
     produtos_criticos_tempo_real = cursor.fetchall()
@@ -3096,6 +3293,7 @@ def montar_dashboard_tempo_real():
     """)
     scanner_erros_hoje = cursor.fetchone()["total"]
 
+    print("FECHANDO CONEXAO")
     conn.close()
 
     return {
@@ -3144,6 +3342,7 @@ def marcar_envio_whatsapp_realizado():
         WHERE id = (SELECT id FROM configuracoes_alerta ORDER BY id LIMIT 1)
     """)
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
 
@@ -3244,6 +3443,7 @@ def novo_usuario():
             conn.rollback()
             flash("Não foi possível cadastrar. Verifique se o usuário já existe.", "erro")
         finally:
+            print("FECHANDO CONEXAO")
             conn.close()
 
         return redirect(url_for("usuarios"))
@@ -3264,6 +3464,7 @@ def editar_usuario(id):
     usuario = cursor.fetchone()
 
     if not usuario:
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Usuário não encontrado.", "erro")
         return redirect(url_for("usuarios"))
@@ -3304,11 +3505,13 @@ def editar_usuario(id):
             ))
 
         conn.commit()
+        print("FECHANDO CONEXAO")
         conn.close()
 
         flash("Usuário atualizado com sucesso.", "sucesso")
         return redirect(url_for("usuarios"))
 
+    print("FECHANDO CONEXAO")
     conn.close()
     return render_template("usuario_form.html", usuario=usuario, titulo="Editar Usuário")
 
@@ -3327,6 +3530,7 @@ def desativar_usuario(id):
     """, (id,))
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Usuário desativado.", "sucesso")
@@ -3353,6 +3557,7 @@ def codigo_barras():
             LIMIT 1
         """, (codigo,))
         produto = cursor.fetchone()
+        print("FECHANDO CONEXAO")
         conn.close()
 
         if produto:
@@ -3387,11 +3592,16 @@ def codigo_barras():
 
     cursor.execute("""
         SELECT COUNT(*) AS total
-        FROM produtos
-        WHERE quantidade_atual <= limite_alerta
+        FROM (
+            SELECT LOWER(TRIM(nome)), tipo_estoque
+            FROM produtos
+            GROUP BY LOWER(TRIM(nome)), tipo_estoque
+            HAVING COALESCE(SUM(quantidade_atual), 0) <= COALESCE(MAX(limite_alerta), 0)
+        ) AS produtos_baixos
     """)
     estoque_baixo_scanner = cursor.fetchone()["total"]
 
+    print("FECHANDO CONEXAO")
     conn.close()
 
     return render_template(
@@ -3432,6 +3642,7 @@ def scanner_baixa_rapida():
     produto = cursor.fetchone()
 
     if not produto:
+        print("FECHANDO CONEXAO")
         conn.close()
         registrar_auditoria_scanner(
             codigo,
@@ -3446,6 +3657,7 @@ def scanner_baixa_rapida():
         return redirect(url_for("codigo_barras", codigo=codigo, modo="continuo"))
 
     if produto_esta_vencido(produto):
+        print("FECHANDO CONEXAO")
         conn.close()
         registrar_auditoria_scanner(
             codigo,
@@ -3461,6 +3673,7 @@ def scanner_baixa_rapida():
 
 
     if produto["quantidade_atual"] < quantidade:
+        print("FECHANDO CONEXAO")
         conn.close()
         registrar_auditoria_scanner(
             codigo,
@@ -3496,6 +3709,7 @@ def scanner_baixa_rapida():
     )
 
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash(f"Baixa rápida realizada: {produto['nome']} (-{quantidade}).", "sucesso")
@@ -3567,6 +3781,7 @@ def config_alertas():
             config["id"]
         ))
         conn.commit()
+        print("FECHANDO CONEXAO")
         conn.close()
 
         flash("Configurações de alerta salvas com sucesso.", "sucesso")
@@ -3576,6 +3791,7 @@ def config_alertas():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM historico_alertas ORDER BY criado_em DESC LIMIT 20")
     historico = cursor.fetchall()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     #mensagem_preview, _ = montar_mensagem_alertas()
@@ -3609,6 +3825,7 @@ def senha_padrao_ativa():
     cursor = conn.cursor()
     cursor.execute("SELECT senha_hash FROM admin WHERE usuario = %s", ("admin",))
     admin = cursor.fetchone()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     if not admin:
@@ -3648,12 +3865,14 @@ def alterar_senha():
     admin = cursor.fetchone()
 
     if not admin or not check_password_hash(admin["senha_hash"], senha_atual):
+        print("FECHANDO CONEXAO")
         conn.close()
         flash("Senha atual incorreta.", "erro")
         return redirect(url_for("configuracoes"))
 
     cursor.execute("UPDATE admin SET senha_hash = %s WHERE id = %s", (generate_password_hash(nova_senha), admin["id"]))
     conn.commit()
+    print("FECHANDO CONEXAO")
     conn.close()
 
     flash("Senha alterada com sucesso.", "sucesso")
@@ -3680,6 +3899,7 @@ def reset_sistema():
         cursor.execute("ALTER SEQUENCE auditoria_scanner_id_seq RESTART WITH 1")
 
         conn.commit()
+        print("FECHANDO CONEXAO")
         conn.close()
 
         flash("Sistema zerado com sucesso.", "sucesso")
@@ -3788,6 +4008,7 @@ def importar_estoque():
                     importados += 1
 
             conn.commit()
+            print("FECHANDO CONEXAO")
             conn.close()
 
             flash(f"Importação concluída. Novos: {importados}. Atualizados: {atualizados}.", "sucesso")
@@ -3895,6 +4116,7 @@ def restaurar_backup_local(nome_arquivo):
         cursor.execute("SELECT setval('movimentacoes_id_seq', COALESCE((SELECT MAX(id) FROM movimentacoes), 1))")
 
         conn.commit()
+        print("FECHANDO CONEXAO")
         conn.close()
 
         flash("Backup restaurado com sucesso. Um backup de segurança foi criado antes da restauração.", "sucesso")

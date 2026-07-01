@@ -40,8 +40,9 @@
                 <label>Estoque</label>
                 <select name="tipo_estoque">
                     <option value="">Todos</option>
-                    <option value="almoxarifado" {% if tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
-                    <option value="farmacia_satelite" {% if tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+                    {% for codigo, nome in estoques_sistema.items() %}
+                    <option value="{{ codigo }}" {% if tipo_estoque == codigo %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
@@ -134,7 +135,7 @@
                     <div class="timeline-details">
                         <div>
                             <span>Estoque</span>
-                            <strong>{{ 'Farmácia Satélite' if mov.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</strong>
+                            <strong>{{ nome_tipo_estoque(mov.tipo_estoque) }}</strong>
                         </div>
 
                         <div>
@@ -156,9 +157,9 @@
                     {% if mov.estoque_origem or mov.estoque_destino %}
                     <div class="transfer-route">
                         <strong>Transferência:</strong>
-                        {{ 'Farmácia Satélite' if mov.estoque_origem == 'farmacia_satelite' else 'Almoxarifado' }}
+                        {{ nome_tipo_estoque(mov.estoque_origem) }}
                         →
-                        {{ 'Farmácia Satélite' if mov.estoque_destino == 'farmacia_satelite' else 'Almoxarifado' }}
+                        {{ nome_tipo_estoque(mov.estoque_destino) }}
                     </div>
                     {% endif %}
 

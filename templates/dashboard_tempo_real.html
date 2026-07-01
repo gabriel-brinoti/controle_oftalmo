@@ -148,7 +148,7 @@
                 <div class="critical-live-item">
                     <div>
                         <strong>{{ produto.nome }}</strong>
-                        <span>{{ produto.categoria_nome }} • {{ 'Farmácia' if produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}</span>
+                        <span>{{ produto.categoria_nome }} • {{ nome_tipo_estoque(produto.tipo_estoque) }}</span>
                     </div>
                     <b>{{ produto.quantidade_atual }}</b>
                 </div>

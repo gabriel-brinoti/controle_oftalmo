@@ -226,7 +226,7 @@
                         <p>
                             {{ produto.categoria_nome }}
                             •
-                            {{ 'Farmácia Satélite' if produto.tipo_estoque == 'farmacia_satelite' else 'Almoxarifado' }}
+                            {{ nome_tipo_estoque(produto.tipo_estoque) }}
                         </p>
                     </div>
 
@@ -291,11 +291,11 @@
                     <form method="POST" action="{{ url_for('transferir_estoque', id=produto.id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <select name="destino" required>
-                            {% if produto.tipo_estoque == 'almoxarifado' %}
-                                <option value="farmacia_satelite">Para Farmácia</option>
-                            {% else %}
-                                <option value="almoxarifado">Para Almoxarifado</option>
+                            {% for codigo, nome in estoques_sistema.items() %}
+                            {% if codigo != produto.tipo_estoque %}
+                                <option value="{{ codigo }}">Para {{ nome }}</option>
                             {% endif %}
+                            {% endfor %}
                         </select>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="scanner-transfer" type="submit">Transferir</button>

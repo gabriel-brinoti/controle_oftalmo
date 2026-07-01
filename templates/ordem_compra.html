@@ -43,6 +43,8 @@
                     Almox
                 {% elif tipo_estoque == 'farmacia_satelite' %}
                     Farmácia
+                {% elif tipo_estoque == 'carrinho_urgencia' %}
+                    Urgência
                 {% else %}
                     Geral
                 {% endif %}
@@ -57,8 +59,9 @@
                 <label>Estoque</label>
                 <select name="tipo_estoque">
                     <option value="" {% if not tipo_estoque %}selected{% endif %}>Todos os estoques</option>
-                    <option value="almoxarifado" {% if tipo_estoque == 'almoxarifado' %}selected{% endif %}>Almoxarifado</option>
-                    <option value="farmacia_satelite" {% if tipo_estoque == 'farmacia_satelite' %}selected{% endif %}>Farmácia Satélite</option>
+                    {% for codigo, nome in estoques_sistema.items() %}
+                    <option value="{{ codigo }}" {% if tipo_estoque == codigo %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
                 </select>
             </div>
 
@@ -93,6 +96,21 @@
         </div>
 
         {% set lista = separados.farmacia_satelite %}
+        {% include "ordem_compra_cards.html" %}
+    </section>
+    {% endif %}
+
+    {% if not tipo_estoque or tipo_estoque == 'carrinho_urgencia' %}
+    <section class="purchase-stock-section">
+        <div class="purchase-section-heading">
+            <div>
+                <span>Estoque de pronto atendimento</span>
+                <h2>Carrinho de Urgência</h2>
+            </div>
+            <strong>{{ separados.carrinho_urgencia|length }} item(ns)</strong>
+        </div>
+
+        {% set lista = separados.carrinho_urgencia %}
         {% include "ordem_compra_cards.html" %}
     </section>
     {% endif %}

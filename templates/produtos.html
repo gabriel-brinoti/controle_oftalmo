@@ -19,6 +19,8 @@
             class="{{ 'ativo' if tipo_estoque == 'almoxarifado' else '' }}">Almoxarifado</a>
         <a href="{{ url_for('produtos', tipo_estoque='farmacia') }}"
             class="{{ 'ativo' if tipo_estoque == 'farmacia_satelite' else '' }}">Farmácia Satélite</a>
+        <a href="{{ url_for('produtos', tipo_estoque='carrinho_urgencia') }}"
+            class="{{ 'ativo' if tipo_estoque == 'carrinho_urgencia' else '' }}">Carrinho de Urgência</a>
     </div>
 
     <div class="alertas-operacionais">
@@ -95,8 +97,7 @@
                     <div>
                         <span class="expired-badge">Vencido</span>
                         <h3>{{ produto.nome }}</h3>
-                        <p>{{ produto.categoria_nome }} • {{ 'Farmácia Satélite' if produto.tipo_estoque ==
-                            'farmacia_satelite' else 'Almoxarifado' }}</p>
+                        <p>{{ produto.categoria_nome }} • {{ nome_tipo_estoque(produto.tipo_estoque) }}</p>
                     </div>
 
                     <div class="expired-product-info">
@@ -135,8 +136,7 @@
                 <div class="product-title-row">
                     <div>
                         <h2>{{ item.produto.nome }}</h2>
-                        <span>{{ item.produto.categoria_nome }} • {{ 'Farmácia Satélite' if item.produto.tipo_estoque ==
-                            'farmacia_satelite' else 'Almoxarifado' }}</span>
+                        <span>{{ item.produto.categoria_nome }} • {{ nome_tipo_estoque(item.produto.tipo_estoque) }}</span>
                     </div>
 
                     <span class="status-badge-premium {{ item.status.tipo }}">{{ item.status.texto }}</span>
@@ -221,11 +221,11 @@
                         action="{{ url_for('transferir_estoque', id=item.produto.id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <select name="destino" required>
-                            {% if item.produto.tipo_estoque == 'almoxarifado' %}
-                            <option value="farmacia_satelite">Para Farmácia</option>
-                            {% else %}
-                            <option value="almoxarifado">Para Almoxarifado</option>
+                            {% for codigo, nome in estoques_sistema.items() %}
+                            {% if codigo != item.produto.tipo_estoque %}
+                            <option value="{{ codigo }}">Para {{ nome }}</option>
                             {% endif %}
+                            {% endfor %}
                         </select>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="move-transfer" type="submit">Transferir</button>
