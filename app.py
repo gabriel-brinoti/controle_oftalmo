@@ -2743,7 +2743,6 @@ def separar_itens_por_estoque(itens):
 @login_obrigatorio
 @licenca_obrigatoria
 @estoque_obrigatorio
-@admin_obrigatorio
 def ordem_compra():
     tipo_estoque = request.args.get("tipo_estoque", "").strip()
 
@@ -2812,7 +2811,7 @@ def montar_dados_ordem_compra(tipo_estoque=""):
 @app.route("/ordem_compra/exportar")
 @login_obrigatorio
 @licenca_obrigatoria
-@admin_obrigatorio
+@estoque_obrigatorio
 def exportar_ordem_compra():
     formato = request.args.get("formato", "xlsx")
     tipo_estoque = request.args.get("tipo_estoque", "").strip()

@@ -54,7 +54,7 @@
         </a>
 
         <a href="{{ url_for('ordem_compra') }}"
-           class="{{ 'active' if request.endpoint == 'ordem_compra' else '' }}">
+           class="{{ 'active' if request.endpoint in ['ordem_compra', 'exportar_ordem_compra'] else '' }}">
            Ordem de Compra
         </a>
 
@@ -98,6 +98,11 @@
         <a href="{{ url_for('historico') }}"
            class="{{ 'active' if request.endpoint == 'historico' else '' }}">
            Histórico
+        </a>
+
+        <a href="{{ url_for('ordem_compra') }}"
+           class="{{ 'active' if request.endpoint in ['ordem_compra', 'exportar_ordem_compra'] else '' }}">
+           Ordem de Compra
         </a>
 
     {% endif %}
