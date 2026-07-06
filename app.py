@@ -12,6 +12,8 @@ import smtplib
 from email.message import EmailMessage
 import requests
 import json
+import re
+import unicodedata
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -35,6 +37,7 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 ALERTA_DIAS = 5
+DIAS_INATIVAR_PRODUTO_ZERADO = 30
 ESTOQUES = {
     "almoxarifado": "Almoxarifado",
     "farmacia_satelite": "Farmácia Satélite",
@@ -98,12 +101,20 @@ def criar_banco():
             limite_alerta INTEGER NOT NULL DEFAULT 0,
             observacoes TEXT,
             tipo_estoque TEXT NOT NULL DEFAULT 'almoxarifado',
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            zerado_desde DATE,
+            inativado_em TIMESTAMP,
+            motivo_inativacao TEXT,
             criado_em TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
 
     cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS tipo_estoque TEXT NOT NULL DEFAULT 'almoxarifado'")
     cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS codigo_barras TEXT")
+    cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE")
+    cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS zerado_desde DATE")
+    cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS inativado_em TIMESTAMP")
+    cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS motivo_inativacao TEXT")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimentacoes (
             id SERIAL PRIMARY KEY,
@@ -231,6 +242,8 @@ def criar_banco():
             True,
             "08:00"
         ))
+
+    aplicar_inativacao_produtos_zerados(cursor)
 
     conn.commit()
     print("FECHANDO CONEXAO")
@@ -468,6 +481,67 @@ def normalizar_tipo_estoque_url(tipo):
     return ROTAS_ESTOQUE.get(tipo)
 
 
+def filtro_produtos_ativos(alias="produtos"):
+    return f"COALESCE({alias}.ativo, TRUE) = TRUE"
+
+
+def atualizar_controle_zerado_produto(cursor, produto_id, quantidade_atual):
+    if quantidade_atual <= 0:
+        cursor.execute("""
+            UPDATE produtos
+            SET zerado_desde = COALESCE(zerado_desde, CURRENT_DATE)
+            WHERE id = %s
+        """, (produto_id,))
+    else:
+        cursor.execute("""
+            UPDATE produtos
+            SET ativo = TRUE,
+                zerado_desde = NULL,
+                inativado_em = NULL,
+                motivo_inativacao = NULL
+            WHERE id = %s
+        """, (produto_id,))
+
+
+def aplicar_inativacao_produtos_zerados(cursor):
+    cursor.execute("""
+        UPDATE produtos
+        SET zerado_desde = CURRENT_DATE
+        WHERE COALESCE(ativo, TRUE) = TRUE
+          AND quantidade_atual <= 0
+          AND zerado_desde IS NULL
+    """)
+    cursor.execute("""
+        UPDATE produtos
+        SET zerado_desde = NULL,
+            inativado_em = NULL,
+            motivo_inativacao = NULL
+        WHERE quantidade_atual > 0
+          AND zerado_desde IS NOT NULL
+    """)
+    cursor.execute("""
+        UPDATE produtos
+        SET ativo = FALSE,
+            inativado_em = NOW(),
+            motivo_inativacao = %s
+        WHERE COALESCE(ativo, TRUE) = TRUE
+          AND quantidade_atual <= 0
+          AND zerado_desde <= CURRENT_DATE - (%s * INTERVAL '1 day')
+    """, (
+        f"Inativado automaticamente após {DIAS_INATIVAR_PRODUTO_ZERADO} dias com estoque zerado.",
+        DIAS_INATIVAR_PRODUTO_ZERADO
+    ))
+
+
+def executar_inativacao_automatica():
+    conn = conectar()
+    cursor = conn.cursor()
+    aplicar_inativacao_produtos_zerados(cursor)
+    conn.commit()
+    print("FECHANDO CONEXAO")
+    conn.close()
+
+
 @app.context_processor
 def utilitarios_templates():
     return {
@@ -476,9 +550,26 @@ def utilitarios_templates():
     }
 
 
+def normalizar_nome_produto_agrupamento(nome):
+    texto = unicodedata.normalize("NFKD", str(nome or ""))
+    texto = "".join(char for char in texto if not unicodedata.combining(char))
+    texto = texto.lower().strip()
+    texto = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1.\2", texto)
+    texto = re.sub(r"(\d+(?:\.\d+)?)\s*(ml|l|mg|g|mcg|ui|un)\b", r"\1\2", texto)
+    texto = re.sub(r"[^a-z0-9.%]+", " ", texto)
+    tokens = texto.split()
+
+    for indice, token in enumerate(tokens):
+        if re.fullmatch(r"\d+(?:\.\d+)?(?:ml|l|mg|g|mcg|ui|un)", token):
+            tokens = tokens[:indice + 1]
+            break
+
+    return " ".join(tokens)
+
+
 def chave_produto_estoque(produto):
     return (
-        str(produto["nome"]).strip().lower(),
+        normalizar_nome_produto_agrupamento(produto["nome"]),
         produto["tipo_estoque"]
     )
 
@@ -1070,6 +1161,8 @@ def dashboard():
     #xcept Exception:
     #   pass
 
+    executar_inativacao_automatica()
+
     conn = conectar()
     cursor = conn.cursor()
 
@@ -1077,6 +1170,7 @@ def dashboard():
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
         ORDER BY produtos.nome
     """)
     produtos = cursor.fetchall()
@@ -1251,6 +1345,7 @@ def montar_central_categorias():
             SELECT *
             FROM produtos
             WHERE categoria_id = %s
+              AND COALESCE(ativo, TRUE) = TRUE
         """, (categoria["id"],))
         produtos_cat = cursor.fetchall()
 
@@ -1457,6 +1552,8 @@ def produtos(tipo_estoque=None):
 
     tipo_banco = normalizar_tipo_estoque_url(tipo_estoque)
 
+    executar_inativacao_automatica()
+
     conn = conectar()
     cursor = conn.cursor()
 
@@ -1464,7 +1561,7 @@ def produtos(tipo_estoque=None):
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
-        WHERE 1=1
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
     """
     params = []
 
@@ -1584,6 +1681,7 @@ def baixar_estoque(id):
     estoque_atual = estoque_anterior - quantidade
 
     cursor.execute("UPDATE produtos SET quantidade_atual = %s WHERE id = %s", (estoque_atual, id))
+    atualizar_controle_zerado_produto(cursor, id, estoque_atual)
     registrar_movimentacao(cursor, id, produto["nome"], "retirada", quantidade, estoque_anterior, estoque_atual, observacao, produto["tipo_estoque"])
 
     conn.commit()
@@ -1625,6 +1723,7 @@ def repor_estoque(id):
     estoque_atual = estoque_anterior + quantidade
 
     cursor.execute("UPDATE produtos SET quantidade_atual = %s WHERE id = %s", (estoque_atual, id))
+    atualizar_controle_zerado_produto(cursor, id, estoque_atual)
     registrar_movimentacao(cursor, id, produto["nome"], "reposicao", quantidade, estoque_anterior, estoque_atual, observacao, produto["tipo_estoque"])
 
     conn.commit()
@@ -1704,6 +1803,7 @@ def devolver_estoque(id):
     estoque_atual = estoque_anterior + quantidade
 
     cursor.execute("UPDATE produtos SET quantidade_atual = %s WHERE id = %s", (estoque_atual, id))
+    atualizar_controle_zerado_produto(cursor, id, estoque_atual)
     registrar_movimentacao(cursor, id, produto["nome"], "devolucao", quantidade, estoque_anterior, estoque_atual, observacao, produto["tipo_estoque"])
 
     conn.commit()
@@ -1789,6 +1889,7 @@ def transferir_estoque(id):
         "UPDATE produtos SET quantidade_atual = %s WHERE id = %s",
         (estoque_origem_atual, origem["id"])
     )
+    atualizar_controle_zerado_produto(cursor, origem["id"], estoque_origem_atual)
 
     if produto_destino:
         estoque_destino_anterior = produto_destino["quantidade_atual"]
@@ -1798,6 +1899,7 @@ def transferir_estoque(id):
             "UPDATE produtos SET quantidade_atual = %s WHERE id = %s",
             (estoque_destino_atual, produto_destino["id"])
         )
+        atualizar_controle_zerado_produto(cursor, produto_destino["id"], estoque_destino_atual)
         produto_destino_id = produto_destino["id"]
     else:
         estoque_destino_anterior = 0
@@ -1933,6 +2035,10 @@ def novo_produto():
                         estoque_padrao = GREATEST(estoque_padrao, %s),
                         limite_alerta = %s,
                         codigo_barras = COALESCE(NULLIF(%s, ''), codigo_barras),
+                        ativo = TRUE,
+                        zerado_desde = NULL,
+                        inativado_em = NULL,
+                        motivo_inativacao = NULL,
                         observacoes = CASE
                             WHEN %s <> '' THEN %s
                             ELSE observacoes
@@ -2058,6 +2164,7 @@ def editar_produto(id):
             request.form.get("tipo_estoque", "almoxarifado"),
             id
         ))
+        atualizar_controle_zerado_produto(cursor, id, int(request.form.get("quantidade_atual") or 0))
         conn.commit()
         print("FECHANDO CONEXAO")
         conn.close()
@@ -2186,6 +2293,8 @@ def historico_produto(id):
 
 
 def montar_painel_relatorios():
+    executar_inativacao_automatica()
+
     conn = conectar()
     cursor = conn.cursor()
 
@@ -2193,6 +2302,7 @@ def montar_painel_relatorios():
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
         ORDER BY produtos.nome
     """)
     produtos = cursor.fetchall()
@@ -2462,7 +2572,7 @@ def buscar_produtos_para_relatorio(busca="", tipo_estoque=""):
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
-        WHERE 1=1
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
     """
     params = []
 
@@ -2616,11 +2726,11 @@ def buscar_sugestao_transferencia(produto, grupos):
     if necessario <= 0:
         return None
 
-    nome_normalizado = str(produto["nome"]).strip().lower()
+    nome_normalizado = normalizar_nome_produto_agrupamento(produto["nome"])
     outros = sorted(
         [
             grupo for grupo in grupos.values()
-            if str(grupo["nome"]).strip().lower() == nome_normalizado
+            if normalizar_nome_produto_agrupamento(grupo["nome"]) == nome_normalizado
             and grupo["tipo_estoque"] != produto["tipo_estoque"]
         ],
         key=lambda grupo: grupo["quantidade_atual"],
@@ -2649,6 +2759,8 @@ def buscar_sugestao_transferencia(produto, grupos):
 
 
 def buscar_itens_ordem_compra(tipo_estoque=""):
+    executar_inativacao_automatica()
+
     conn = conectar()
     cursor = conn.cursor()
 
@@ -2656,7 +2768,7 @@ def buscar_itens_ordem_compra(tipo_estoque=""):
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
-        WHERE 1=1
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
     """
     params = []
 
@@ -2867,12 +2979,15 @@ def registrar_historico_alerta(tipo_alerta, canal, destino, conteudo, status, er
 
 
 def buscar_produtos_vencendo_para_alerta():
+    executar_inativacao_automatica()
+
     conn = conectar()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
         ORDER BY produtos.tipo_estoque, produtos.nome
     """)
     produtos = cursor.fetchall()
@@ -2898,12 +3013,15 @@ def buscar_produtos_vencendo_para_alerta():
 
 
 def buscar_estoque_critico_para_alerta():
+    executar_inativacao_automatica()
+
     conn = conectar()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT produtos.*, categorias.nome AS categoria_nome
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
         ORDER BY produtos.tipo_estoque, produtos.nome
     """)
     produtos = cursor.fetchall()
@@ -3172,6 +3290,7 @@ def registrar_auditoria_scanner(codigo_barras, produto_id, produto_nome, tipo_ac
 
 
 def montar_dashboard_tempo_real():
+    executar_inativacao_automatica()
     garantir_tabela_auditoria_scanner()
 
     conn = conectar()
@@ -3180,6 +3299,7 @@ def montar_dashboard_tempo_real():
     cursor.execute("""
         SELECT COUNT(*) AS total
         FROM produtos
+        WHERE COALESCE(ativo, TRUE) = TRUE
     """)
     total_produtos = cursor.fetchone()["total"]
 
@@ -3188,6 +3308,7 @@ def montar_dashboard_tempo_real():
         FROM (
             SELECT LOWER(TRIM(nome)), tipo_estoque
             FROM produtos
+            WHERE COALESCE(ativo, TRUE) = TRUE
             GROUP BY LOWER(TRIM(nome)), tipo_estoque
             HAVING COALESCE(SUM(quantidade_atual), 0) <= COALESCE(MAX(limite_alerta), 0)
         ) AS produtos_baixos
@@ -3199,6 +3320,7 @@ def montar_dashboard_tempo_real():
         FROM (
             SELECT LOWER(TRIM(nome)), tipo_estoque
             FROM produtos
+            WHERE COALESCE(ativo, TRUE) = TRUE
             GROUP BY LOWER(TRIM(nome)), tipo_estoque
             HAVING COALESCE(SUM(quantidade_atual), 0) <= 0
         ) AS produtos_zerados
@@ -3209,6 +3331,7 @@ def montar_dashboard_tempo_real():
         SELECT COUNT(*) AS total
         FROM produtos
         WHERE tipo_estoque = 'almoxarifado'
+          AND COALESCE(ativo, TRUE) = TRUE
     """)
     total_almoxarifado = cursor.fetchone()["total"]
 
@@ -3216,6 +3339,7 @@ def montar_dashboard_tempo_real():
         SELECT COUNT(*) AS total
         FROM produtos
         WHERE tipo_estoque = 'farmacia_satelite'
+          AND COALESCE(ativo, TRUE) = TRUE
     """)
     total_farmacia = cursor.fetchone()["total"]
 
@@ -3223,6 +3347,7 @@ def montar_dashboard_tempo_real():
         SELECT COALESCE(SUM(quantidade_atual), 0) AS total
         FROM produtos
         WHERE tipo_estoque = 'almoxarifado'
+          AND COALESCE(ativo, TRUE) = TRUE
     """)
     unidades_almoxarifado = cursor.fetchone()["total"]
 
@@ -3230,6 +3355,7 @@ def montar_dashboard_tempo_real():
         SELECT COALESCE(SUM(quantidade_atual), 0) AS total
         FROM produtos
         WHERE tipo_estoque = 'farmacia_satelite'
+          AND COALESCE(ativo, TRUE) = TRUE
     """)
     unidades_farmacia = cursor.fetchone()["total"]
 
@@ -3269,6 +3395,7 @@ def montar_dashboard_tempo_real():
             COALESCE(MAX(produtos.limite_alerta), 0) AS limite_alerta
         FROM produtos
         JOIN categorias ON categorias.id = produtos.categoria_id
+        WHERE COALESCE(produtos.ativo, TRUE) = TRUE
         GROUP BY LOWER(TRIM(produtos.nome)), produtos.tipo_estoque
         HAVING COALESCE(SUM(produtos.quantidade_atual), 0) <= COALESCE(MAX(produtos.limite_alerta), 0)
         ORDER BY quantidade_atual ASC
@@ -3541,6 +3668,8 @@ def desativar_usuario(id):
 @licenca_obrigatoria
 @estoque_obrigatorio
 def codigo_barras():
+    executar_inativacao_automatica()
+
     codigo = request.values.get("codigo", "").strip()
     produto = None
     status = None
@@ -3553,6 +3682,7 @@ def codigo_barras():
             FROM produtos
             JOIN categorias ON categorias.id = produtos.categoria_id
             WHERE produtos.codigo_barras = %s
+              AND COALESCE(produtos.ativo, TRUE) = TRUE
             LIMIT 1
         """, (codigo,))
         produto = cursor.fetchone()
@@ -3594,6 +3724,7 @@ def codigo_barras():
         FROM (
             SELECT LOWER(TRIM(nome)), tipo_estoque
             FROM produtos
+            WHERE COALESCE(ativo, TRUE) = TRUE
             GROUP BY LOWER(TRIM(nome)), tipo_estoque
             HAVING COALESCE(SUM(quantidade_atual), 0) <= COALESCE(MAX(limite_alerta), 0)
         ) AS produtos_baixos
@@ -3636,6 +3767,7 @@ def scanner_baixa_rapida():
         SELECT *
         FROM produtos
         WHERE codigo_barras = %s
+          AND COALESCE(ativo, TRUE) = TRUE
         LIMIT 1
     """, (codigo,))
     produto = cursor.fetchone()
@@ -3694,6 +3826,7 @@ def scanner_baixa_rapida():
         SET quantidade_atual = %s
         WHERE id = %s
     """, (estoque_atual, produto["id"]))
+    atualizar_controle_zerado_produto(cursor, produto["id"], estoque_atual)
 
     registrar_movimentacao(
         cursor,
@@ -3985,7 +4118,11 @@ def importar_estoque():
 
                     cursor.execute("""
                         UPDATE produtos
-                        SET quantidade_atual = %s
+                        SET quantidade_atual = %s,
+                            ativo = TRUE,
+                            zerado_desde = NULL,
+                            inativado_em = NULL,
+                            motivo_inativacao = NULL
                         WHERE id = %s
                     """, (nova_quantidade, existente["id"]))
 
