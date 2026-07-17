@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
+﻿from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 import os
 from dotenv import load_dotenv
 import psycopg2
@@ -1603,7 +1603,13 @@ def produtos(tipo_estoque=None):
         elif filtro == "proximos":
             mostrar = "vence" in texto and not vencido
         elif filtro == "estoque":
-            mostrar = produto_estoque_agregado_baixo(produto, resumos_estoque)
+            resumo_estoque = resumos_estoque.get(chave_produto_estoque(produto), {})
+            quantidade_total = resumo_estoque.get("quantidade_total", produto["quantidade_atual"])
+            mostrar = produto_estoque_agregado_baixo(produto, resumos_estoque) and quantidade_total > 0
+        elif filtro == "zerado":
+            resumo_estoque = resumos_estoque.get(chave_produto_estoque(produto), {})
+            quantidade_total = resumo_estoque.get("quantidade_total", produto["quantidade_atual"])
+            mostrar = quantidade_total == 0
 
         item_status = {"produto": produto, "status": status, "vencido": vencido}
 
@@ -4281,3 +4287,4 @@ def backup_automatico_externo():
 
 if __name__ == "__main__":
     app.run(debug=True)
+

@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block conteudo %}
 
 <section class="products-premium-page">
@@ -21,6 +21,14 @@
             class="{{ 'ativo' if tipo_estoque == 'farmacia_satelite' else '' }}">Farmácia Satélite</a>
         <a href="{{ url_for('produtos', tipo_estoque='carrinho_urgencia') }}"
             class="{{ 'ativo' if tipo_estoque == 'carrinho_urgencia' else '' }}">Carrinho de Urgência</a>
+    </div>
+    <div class="stock-tabs-premium stock-alert-tabs">
+        <a href="{{ url_for('produtos', tipo_estoque=tipo_estoque, filtro='todos', busca=busca, categoria_id=categoria_id) if tipo_estoque else url_for('produtos', filtro='todos', busca=busca, categoria_id=categoria_id) }}"
+            class="{{ 'ativo' if filtro == 'todos' else '' }}">Todos os materiais</a>
+        <a href="{{ url_for('produtos', tipo_estoque=tipo_estoque, filtro='estoque', busca=busca, categoria_id=categoria_id) if tipo_estoque else url_for('produtos', filtro='estoque', busca=busca, categoria_id=categoria_id) }}"
+            class="{{ 'ativo' if filtro == 'estoque' else '' }}">Estoque baixo</a>
+        <a href="{{ url_for('produtos', tipo_estoque=tipo_estoque, filtro='zerado', busca=busca, categoria_id=categoria_id) if tipo_estoque else url_for('produtos', filtro='zerado', busca=busca, categoria_id=categoria_id) }}"
+            class="{{ 'ativo' if filtro == 'zerado' else '' }}">Estoque zerado</a>
     </div>
 
     <div class="alertas-operacionais">
@@ -68,6 +76,7 @@
                     <option value="proximos" {% if filtro=='proximos' %}selected{% endif %}>Próximos do vencimento
                     </option>
                     <option value="estoque" {% if filtro=='estoque' %}selected{% endif %}>Estoque baixo</option>
+                    <option value="zerado" {% if filtro=='zerado' %}selected{% endif %}>Estoque zerado</option>
                 </select>
             </div>
 
@@ -279,3 +288,5 @@
 </section>
 
 {% endblock %}
+
+
