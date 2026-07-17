@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block conteudo %}
 <h1>Novo Produto</h1>
 
-<form class="form-card" method="POST">
+<form class="form-card no-enter-submit" method="POST">
     {% include "produto_form.html" %}
     <button type="submit"
 onclick="this.disabled=true; this.innerText='Salvando...'; this.form.submit();">
@@ -10,3 +10,4 @@ onclick="this.disabled=true; this.innerText='Salvando...'; this.form.submit();">
 </button>
 </form>
 {% endblock %}
+

@@ -1,9 +1,10 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block conteudo %}
 <h1>Editar Produto</h1>
 
-<form class="form-card" method="POST">
+<form class="form-card no-enter-submit" method="POST">
     {% include "produto_form.html" %}
     <button type="submit">Atualizar Produto</button>
 </form>
 {% endblock %}
+

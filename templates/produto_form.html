@@ -29,11 +29,6 @@
 <label>Data de vencimento original</label>
 <input type="date" name="data_vencimento" value="{{ produto.data_vencimento if produto else '' }}" required>
 
-<label>Data de abertura</label>
-<input type="date" name="data_abertura" value="{{ produto.data_abertura if produto and produto.data_abertura else '' }}">
-
-<label>Validade após aberto em dias</label>
-<input type="number" name="validade_apos_aberto_dias" min="1" value="{{ produto.validade_apos_aberto_dias if produto and produto.validade_apos_aberto_dias else '' }}">
 
 <label>Quantidade atual</label>
 <input type="number" name="quantidade_atual" min="0" value="{{ produto.quantidade_atual if produto else 0 }}" required>

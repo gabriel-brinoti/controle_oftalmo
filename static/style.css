@@ -7890,3 +7890,17 @@ button,
     background: #ffffff !important;
     color: #006b67 !important;
 }
+.products-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.hero-action-btn.hero-action-btn-secondary {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #dbe4ef;
+    box-shadow: 0 14px 28px rgba(15, 23, 42, .08) !important;
+}

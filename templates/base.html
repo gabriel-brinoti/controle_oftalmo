@@ -1,4 +1,4 @@
-
+﻿
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -152,5 +152,22 @@
 
 </div>
 
+<script>
+document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    const campo = event.target;
+    const formulario = campo.closest('form.no-enter-submit');
+
+    if (!formulario || campo.tagName === 'TEXTAREA') {
+        return;
+    }
+
+    event.preventDefault();
+});
+</script>
 </body>
 </html>
+

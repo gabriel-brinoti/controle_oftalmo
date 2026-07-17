@@ -1,4 +1,4 @@
-﻿from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 import os
 from dotenv import load_dotenv
 import psycopg2
@@ -1982,6 +1982,146 @@ def transferir_estoque(id):
     return redirect(request.referrer or url_for("produtos"))
 
 
+@app.route("/produtos/aberto", methods=["GET", "POST"])
+@login_obrigatorio
+@alteracao_permitida
+@estoque_obrigatorio
+def produto_aberto():
+    if request.method == "POST":
+        produto_id = request.form.get("produto_id")
+        data_abertura = request.form.get("data_abertura", "").strip()
+        validade_apos_aberto_dias = request.form.get("validade_apos_aberto_dias", "").strip()
+
+        erros = []
+        abertura = converter_data(data_abertura)
+        if not produto_id:
+            erros.append("Informe o produto aberto.")
+        if not abertura:
+            erros.append("Informe a data de abertura.")
+        elif abertura > date.today():
+            erros.append("Data de abertura não pode ser futura.")
+        try:
+            validade_dias = int(validade_apos_aberto_dias)
+            if validade_dias <= 0:
+                erros.append("Validade após aberto deve ser maior que zero.")
+        except (TypeError, ValueError):
+            validade_dias = None
+            erros.append("Informe a validade após aberto em dias.")
+
+        if erros:
+            for erro in erros:
+                flash(erro, "erro")
+            return redirect(url_for("produto_aberto"))
+
+        conn = conectar()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM produtos WHERE id = %s AND COALESCE(ativo, TRUE) = TRUE", (produto_id,))
+        produto = cursor.fetchone()
+
+        if not produto:
+            print("FECHANDO CONEXAO")
+            conn.close()
+            flash("Produto não encontrado ou inativo.", "erro")
+            return redirect(url_for("produto_aberto"))
+
+        if produto_esta_vencido(produto):
+            print("FECHANDO CONEXAO")
+            conn.close()
+            flash("Produto vencido bloqueado para abertura. Faça descarte ou ajuste administrativo.", "erro")
+            return redirect(url_for("produto_aberto"))
+
+        estoque_anterior = produto["quantidade_atual"]
+        if estoque_anterior <= 0:
+            print("FECHANDO CONEXAO")
+            conn.close()
+            flash("Produto sem quantidade disponível para abertura.", "erro")
+            return redirect(url_for("produto_aberto"))
+
+        estoque_atual = estoque_anterior - 1
+        observacao = f"Produto aberto em {formatar_data(data_abertura)}. Validade após aberto: {validade_dias} dia(s)."
+
+        cursor.execute("""
+            UPDATE produtos
+            SET data_abertura = %s,
+                validade_apos_aberto_dias = %s,
+                quantidade_atual = %s
+            WHERE id = %s
+        """, (data_abertura, validade_dias, estoque_atual, produto_id))
+        atualizar_controle_zerado_produto(cursor, produto_id, estoque_atual)
+        registrar_movimentacao(
+            cursor,
+            produto_id,
+            produto["nome"],
+            "retirada",
+            1,
+            estoque_anterior,
+            estoque_atual,
+            observacao,
+            produto["tipo_estoque"]
+        )
+
+        conn.commit()
+        print("FECHANDO CONEXAO")
+        conn.close()
+
+        flash("Produto aberto registrado e 1 unidade retirada do estoque.", "sucesso")
+        return redirect(url_for("produtos", tipo_estoque=produto["tipo_estoque"]))
+
+    codigo_barras = request.args.get("codigo_barras", "").strip()
+    nome = request.args.get("nome", "").strip()
+    lote = request.args.get("lote", "").strip()
+    tipo_estoque = request.args.get("tipo_estoque", "almoxarifado").strip()
+    produto = None
+
+    if tipo_estoque not in ESTOQUES:
+        tipo_estoque = "almoxarifado"
+
+    if codigo_barras or nome or lote:
+        conn = conectar()
+        cursor = conn.cursor()
+
+        if codigo_barras:
+            cursor.execute("""
+                SELECT *
+                FROM produtos
+                WHERE codigo_barras = %s
+                  AND tipo_estoque = %s
+                  AND COALESCE(ativo, TRUE) = TRUE
+                ORDER BY data_vencimento ASC, id ASC
+                LIMIT 1
+            """, (codigo_barras, tipo_estoque))
+        elif nome and lote:
+            cursor.execute("""
+                SELECT *
+                FROM produtos
+                WHERE LOWER(TRIM(nome)) = LOWER(TRIM(%s))
+                  AND COALESCE(lote, '') = COALESCE(%s, '')
+                  AND tipo_estoque = %s
+                  AND COALESCE(ativo, TRUE) = TRUE
+                ORDER BY data_vencimento ASC, id ASC
+                LIMIT 1
+            """, (nome, lote, tipo_estoque))
+        else:
+            cursor = None
+            flash("Sem código de barras, informe o nome do produto e o lote utilizado.", "erro")
+
+        if cursor:
+            produto = cursor.fetchone()
+            if not produto:
+                flash("Nenhum produto ativo encontrado com os dados informados nesse estoque.", "erro")
+
+        print("FECHANDO CONEXAO")
+        conn.close()
+
+    return render_template(
+        "produto_aberto.html",
+        codigo_barras=codigo_barras,
+        nome=nome,
+        lote=lote,
+        tipo_estoque=tipo_estoque,
+        produto=produto,
+        hoje=date.today().isoformat()
+    )
 @app.route("/produtos/novo", methods=["GET", "POST"])
 @login_obrigatorio
 @alteracao_permitida
@@ -2002,8 +2142,8 @@ def novo_produto():
         lote = request.form.get("lote", "").strip()
         codigo_barras = request.form.get("codigo_barras", "").strip()
         data_vencimento = request.form.get("data_vencimento")
-        data_abertura = request.form.get("data_abertura") or None
-        validade_apos_aberto_dias = request.form.get("validade_apos_aberto_dias") or None
+        data_abertura = None
+        validade_apos_aberto_dias = None
         quantidade = int(request.form.get("quantidade_atual") or 0)
         estoque_padrao = int(request.form.get("estoque_padrao") or 0)
         limite_alerta = int(request.form.get("limite_alerta") or 0)
@@ -2161,8 +2301,8 @@ def editar_produto(id):
             request.form.get("lote", "").strip(),
             request.form.get("codigo_barras", "").strip(),
             request.form.get("data_vencimento"),
-            request.form.get("data_abertura") or None,
-            request.form.get("validade_apos_aberto_dias") or None,
+            produto["data_abertura"],
+            produto["validade_apos_aberto_dias"],
             int(request.form.get("quantidade_atual") or 0),
             int(request.form.get("estoque_padrao") or 0),
             int(request.form.get("limite_alerta") or 0),

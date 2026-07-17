@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Abertura de produto</span>
+            <h1>Produto Aberto</h1>
+            <p>Bipe o código de barras ou procure pelo nome e lote usado.</p>
+        </div>
+        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar ao estoque</a>
+    </div>
+
+    <form class="form-card" method="GET">
+        <label>Onde o produto está sendo aberto</label>
+        <select name="tipo_estoque" required>
+            {% for codigo, nome_estoque in estoques_sistema.items() %}
+            <option value="{{ codigo }}" {% if tipo_estoque == codigo %}selected{% endif %}>{{ nome_estoque }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Código de barras</label>
+        <input type="text" name="codigo_barras" value="{{ codigo_barras or '' }}" placeholder="Bipe ou digite o código" autofocus>
+
+        <label>Nome do produto, se não tiver código</label>
+        <input type="text" name="nome" value="{{ nome or '' }}" placeholder="Digite o nome do produto">
+
+        <label>Lote utilizado, se não tiver código</label>
+        <input type="text" name="lote" value="{{ lote or '' }}" placeholder="Digite o lote">
+
+        <button type="submit">Buscar produto</button>
+    </form>
+
+    {% if produto %}
+    <form class="form-card no-enter-submit" method="POST">
+        <input type="hidden" name="produto_id" value="{{ produto.id }}">
+
+        <label>Nome do produto</label>
+        <input type="text" value="{{ produto.nome }}" readonly>
+
+        <label>Código de barras</label>
+        <input type="text" value="{{ produto.codigo_barras or '-' }}" readonly>
+
+        <label>Lote</label>
+        <input type="text" value="{{ produto.lote or '-' }}" readonly>
+
+        <label>Estoque de origem</label>
+        <input type="text" value="{{ nome_tipo_estoque(produto.tipo_estoque) }}" readonly>
+
+        <label>Quantidade atual</label>
+        <input type="text" value="{{ produto.quantidade_atual }}" readonly>
+
+        <label>Data de abertura</label>
+        <input type="date" name="data_abertura" value="{{ hoje }}" required>
+
+        <label>Validade após aberto em dias</label>
+        <input type="number" name="validade_apos_aberto_dias" min="1" value="{{ produto.validade_apos_aberto_dias or '' }}" required>
+
+        <button type="submit">Registrar abertura e retirar 1 unidade</button>
+    </form>
+    {% endif %}
+</section>
+
+{% endblock %}
