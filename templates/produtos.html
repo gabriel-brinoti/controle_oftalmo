@@ -37,10 +37,10 @@
         </div>
         {% endif %}
 
-        {% set baixos = produtos_status | selectattr("status.texto", "equalto", "Estoque baixo") | list %}
-        {% if baixos %}
+        {% set total_baixos_exibido = total_resultados if filtro == 'estoque' else total_estoque_baixo %}
+        {% if total_baixos_exibido %}
         <div class="alerta-card warning">
-            ⚠ {{ baixos|length }} produto(s) com estoque baixo
+            ⚠ {{ total_baixos_exibido }} produto(s) com estoque baixo
         </div>
         {% endif %}
     </div>

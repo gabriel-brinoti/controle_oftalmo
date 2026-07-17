@@ -1588,6 +1588,8 @@ def produtos(tipo_estoque=None):
     resumos_estoque = calcular_resumos_estoque_agregado(produtos_lista)
     produtos_status = []
     produtos_vencidos = []
+    total_estoque_baixo = 0
+    total_estoque_zerado = 0
 
     pagina = int(request.args.get("pagina", 1))
     por_pagina = 3
@@ -1598,17 +1600,21 @@ def produtos(tipo_estoque=None):
         vencido = produto_esta_vencido(produto)
         mostrar = True
 
+        resumo_estoque = resumos_estoque.get(chave_produto_estoque(produto), {})
+        quantidade_total = resumo_estoque.get("quantidade_total", produto["quantidade_atual"])
+
+        if produto_estoque_agregado_baixo(produto, resumos_estoque) and quantidade_total > 0:
+            total_estoque_baixo += 1
+        if quantidade_total == 0:
+            total_estoque_zerado += 1
+
         if filtro == "vencidos":
             mostrar = vencido
         elif filtro == "proximos":
             mostrar = "vence" in texto and not vencido
         elif filtro == "estoque":
-            resumo_estoque = resumos_estoque.get(chave_produto_estoque(produto), {})
-            quantidade_total = resumo_estoque.get("quantidade_total", produto["quantidade_atual"])
             mostrar = produto_estoque_agregado_baixo(produto, resumos_estoque) and quantidade_total > 0
         elif filtro == "zerado":
-            resumo_estoque = resumos_estoque.get(chave_produto_estoque(produto), {})
-            quantidade_total = resumo_estoque.get("quantidade_total", produto["quantidade_atual"])
             mostrar = quantidade_total == 0
 
         item_status = {"produto": produto, "status": status, "vencido": vencido}
@@ -1639,6 +1645,9 @@ def produtos(tipo_estoque=None):
         tipo_estoque_nome=nome_tipo_estoque(tipo_banco) if tipo_banco else "Todos os Estoques",
         pagina=pagina,
         total_paginas=total_paginas,
+        total_resultados=total_produtos,
+        total_estoque_baixo=total_estoque_baixo,
+        total_estoque_zerado=total_estoque_zerado,
     )
 
 
