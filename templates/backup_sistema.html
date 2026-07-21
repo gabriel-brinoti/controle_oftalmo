@@ -7,7 +7,7 @@
         <div>
             <span class="dash-eyebrow">Proteção operacional</span>
             <h1>Backups do Sistema</h1>
-            <p>Backups automáticos diários às 02:00.</p>
+            <p>Backups automáticos diários com snapshot do Neon e cópia JSON local para conferência.</p>
         </div>
     </div>
 
@@ -19,24 +19,26 @@
 
 
     <div class="license-panel">
-        <h2>Backup externo — Supabase Storage</h2>
+        <h2>Backup externo - Neon Snapshot</h2>
 
-        {% if supabase_configurado %}
+        {% if neon_configurado %}
         <p><strong>Status:</strong> configurado</p>
-        <p><strong>Bucket:</strong> {{ supabase_bucket }}</p>
-        <p>Os backups automáticos também serão enviados para o Supabase Storage.</p>
+        <p><strong>Projeto:</strong> {{ neon_project_id }}</p>
+        <p><strong>Branch:</strong> {{ neon_branch_id }}</p>
+        <p><strong>Retenção:</strong> {{ neon_retencao }} dia(s)</p>
+        <p>Os backups automáticos criam snapshots no Neon. Use o painel do Neon para restaurar uma cópia do banco, se necessário.</p>
         {% else %}
         <p><strong>Status:</strong> não configurado</p>
-        <p>Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_BACKUP_BUCKET no Render.</p>
+        <p>Configure NEON_API_KEY, NEON_PROJECT_ID, NEON_BRANCH_ID e NEON_SNAPSHOT_RETENTION_DAYS no Render.</p>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('testar_backup_supabase') }}">
-            <button type="submit">Gerar backup e enviar para Supabase</button>
+        <form method="POST" action="{{ url_for('testar_backup_neon') }}">
+            <button type="submit">Gerar backup e criar snapshot Neon</button>
         </form>
     </div>
 
     <div class="license-panel">
-        <h2>Últimos backups</h2>
+        <h2>Últimos backups JSON locais</h2>
 
         <div class="audit-timeline-list">
             {% if backups %}

@@ -605,39 +605,45 @@ def serializar_linhas(linhas):
     return resultado
 
 
-def enviar_backup_para_supabase(caminho_arquivo):
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    bucket = os.environ.get("SUPABASE_BACKUP_BUCKET", "backups")
-
-    if not supabase_url or not service_key:
-        return False, "Supabase Storage não configurado."
-
-    nome_arquivo = os.path.basename(caminho_arquivo)
-    storage_path = f"automaticos/{nome_arquivo}"
-
-    bucket = bucket.strip().strip("/")
-    storage_path = storage_path.strip().lstrip("/")
-    
-    supabase_url = supabase_url.strip().rstrip("/")
-    supabase_url = supabase_url.replace("/rest/v1", "").replace("/storage/v1", "")
-
-    url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{storage_path}"
-
-    headers = {
-        "Authorization": f"Bearer {service_key}",
-        "apikey": service_key,
-        "Content-Type": "application/json",
-        "x-upsert": "true"
+def obter_configuracao_backup_neon():
+    return {
+        "api_key": os.environ.get("NEON_API_KEY", "").strip(),
+        "project_id": os.environ.get("NEON_PROJECT_ID", "").strip(),
+        "branch_id": os.environ.get("NEON_BRANCH_ID", "").strip(),
+        "retencao_dias": int(os.environ.get("NEON_SNAPSHOT_RETENTION_DAYS") or 30)
     }
 
-    with open(caminho_arquivo, "rb") as arquivo:
-        resposta = requests.post(url, headers=headers, data=arquivo, timeout=60)
 
-    if resposta.status_code not in [200, 201]:
-        return False, f"Erro Supabase Storage: {resposta.status_code} - {resposta.text}"
+def criar_snapshot_neon():
+    config = obter_configuracao_backup_neon()
 
-    return True, f"Backup enviado para Supabase Storage: {storage_path}"
+    if not config["api_key"] or not config["project_id"] or not config["branch_id"]:
+        return False, "Snapshot Neon não configurado. Configure NEON_API_KEY, NEON_PROJECT_ID e NEON_BRANCH_ID no Render."
+
+    agora = datetime.utcnow()
+    nome_snapshot = agora.strftime("controle-oftalmo-auto-%Y-%m-%d-%Hh%Mm")
+    expira_em = agora + timedelta(days=config["retencao_dias"])
+
+    url = (
+        "https://console.neon.tech/api/v2/projects/"
+        f"{config['project_id']}/branches/{config['branch_id']}/snapshot"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Accept": "application/json"
+    }
+    params = {
+        "name": nome_snapshot,
+        "expires_at": expira_em.isoformat(timespec="seconds") + "Z"
+    }
+
+    resposta = requests.post(url, headers=headers, params=params, timeout=60)
+
+    if resposta.status_code not in [200, 201, 202]:
+        return False, f"Erro ao criar snapshot Neon: {resposta.status_code} - {resposta.text}"
+
+    return True, f"Snapshot Neon criado: {nome_snapshot}"
 
 def gerar_backup_sistema():
     garantir_pasta_backup()
@@ -686,13 +692,13 @@ def gerar_backup_sistema():
         json.dump(backup, arquivo, ensure_ascii=False, indent=4)
 
     upload_ok = False
-    upload_mensagem = "Upload externo não executado."
+    upload_mensagem = "Snapshot Neon não executado."
 
     try:
-        upload_ok, upload_mensagem = enviar_backup_para_supabase(caminho)
+        upload_ok, upload_mensagem = criar_snapshot_neon()
     except Exception as erro:
         upload_ok = False
-        upload_mensagem = f"Erro ao enviar backup externo: {erro}"
+        upload_mensagem = f"Erro ao criar snapshot Neon: {erro}"
 
     limpar_backups_antigos()
 
@@ -752,15 +758,21 @@ def painel_backup():
     return render_template(
         "backup_sistema.html",
         backups=backups,
-        supabase_configurado=bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")),
-        supabase_bucket=os.environ.get("SUPABASE_BACKUP_BUCKET", "backups")
+        neon_configurado=bool(
+            os.environ.get("NEON_API_KEY")
+            and os.environ.get("NEON_PROJECT_ID")
+            and os.environ.get("NEON_BRANCH_ID")
+        ),
+        neon_project_id=os.environ.get("NEON_PROJECT_ID", ""),
+        neon_branch_id=os.environ.get("NEON_BRANCH_ID", ""),
+        neon_retencao=os.environ.get("NEON_SNAPSHOT_RETENTION_DAYS", "30")
     )
 
 
-@app.route("/backup/testar_supabase", methods=["POST"])
+@app.route("/backup/testar_neon", methods=["POST"])
 @login_obrigatorio
 @admin_obrigatorio
-def testar_backup_supabase():
+def testar_backup_neon():
     caminho, upload_ok, upload_mensagem = gerar_backup_sistema()
 
     flash(upload_mensagem, "sucesso" if upload_ok else "erro")
