@@ -1,43 +1,31 @@
 <label>Nome do produto</label>
-<input type="text" name="nome" value="{{ produto.nome if produto else '' }}" required>
+<input type="text" name="nome" value="{{ form.get('nome') if form else (produto.nome if produto else '') }}" required>
 
 <label>Categoria</label>
 <select name="categoria_id" required>
     <option value="">Selecione</option>
     {% for categoria in categorias %}
-        <option value="{{ categoria.id }}"
-            {% if produto and produto.categoria_id == categoria.id %}selected{% endif %}>
+        {% set categoria_atual = form.get('categoria_id') if form else (produto.categoria_id|string if produto else '') %}
+        <option value="{{ categoria.id }}" {% if categoria_atual == categoria.id|string %}selected{% endif %}>
             {{ categoria.nome }}
         </option>
     {% endfor %}
 </select>
 <a class="link-extra" href="{{ url_for('nova_categoria') }}">Cadastrar nova categoria</a>
 
-<label>Tipo de estoque</label>
-<select name="tipo_estoque" required>
-    {% for codigo, nome in estoques_sistema.items() %}
-    <option value="{{ codigo }}" {% if (not produto and codigo == 'almoxarifado') or (produto and produto.tipo_estoque == codigo) %}selected{% endif %}>{{ nome }}</option>
-    {% endfor %}
+<label>Codigo de barras</label>
+<input type="text" name="codigo_barras" value="{{ form.get('codigo_barras') if form else (produto.codigo_barras if produto else '') }}" placeholder="Bipe ou digite o codigo">
+
+<label>Unidade de medida</label>
+<select name="unidade_medida" required>
+    {% set unidade_atual = form.get('unidade_medida') if form else (produto.unidade_medida if produto and produto.unidade_medida else 'unidade') %}
+    <option value="unidade" {% if unidade_atual == 'unidade' %}selected{% endif %}>Unidade</option>
+    <option value="caixa" {% if unidade_atual == 'caixa' %}selected{% endif %}>Caixa</option>
+    <option value="pacote" {% if unidade_atual == 'pacote' %}selected{% endif %}>Pacote</option>
+    <option value="frasco" {% if unidade_atual == 'frasco' %}selected{% endif %}>Frasco</option>
+    <option value="ampola" {% if unidade_atual == 'ampola' %}selected{% endif %}>Ampola</option>
+    <option value="ml" {% if unidade_atual == 'ml' %}selected{% endif %}>ML</option>
 </select>
 
-<label>Lote</label>
-<input type="text" name="lote" value="{{ produto.lote if produto else '' }}">
-
-<label>Código de barras</label>
-<input type="text" name="codigo_barras" value="{{ produto.codigo_barras if produto else '' }}" placeholder="Bipe ou digite o código">
-
-<label>Data de vencimento original</label>
-<input type="date" name="data_vencimento" value="{{ produto.data_vencimento if produto else '' }}" required>
-
-
-<label>Quantidade atual</label>
-<input type="number" name="quantidade_atual" min="0" value="{{ produto.quantidade_atual if produto else 0 }}" required>
-
-<label>Estoque padrão</label>
-<input type="number" name="estoque_padrao" min="0" value="{{ produto.estoque_padrao if produto else 10 }}" required>
-
-<label>Limite de alerta</label>
-<input type="number" name="limite_alerta" min="0" value="{{ produto.limite_alerta if produto else 5 }}" required>
-
-<label>Observações</label>
-<textarea name="observacoes">{{ produto.observacoes if produto and produto.observacoes else '' }}</textarea>
+<label>Observacoes</label>
+<textarea name="observacoes">{{ form.get('observacoes') if form else (produto.observacoes if produto and produto.observacoes else '') }}</textarea>

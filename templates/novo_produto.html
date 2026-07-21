@@ -1,13 +1,90 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block conteudo %}
-<h1>Novo Produto</h1>
 
-<form class="form-card no-enter-submit" method="POST">
-    {% include "produto_form.html" %}
-    <button type="submit"
-onclick="this.disabled=true; this.innerText='Salvando...'; this.form.submit();">
-    Salvar Produto
-</button>
-</form>
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Cadastro principal</span>
+            <h1>Novo Produto</h1>
+            <p>Cadastre o produto uma vez. Depois use Nova entrada para informar lote, validade e quantidade.</p>
+        </div>
+        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar aos produtos</a>
+    </div>
+
+    <form class="form-card no-enter-submit" method="POST">
+        {% include "produto_form.html" %}
+
+        <label>Destino da primeira entrada</label>
+        <select name="tipo_estoque" required>
+            {% for codigo, nome in estoques_sistema.items() %}
+            <option value="{{ codigo }}" {% if form and form.get('tipo_estoque') == codigo %}selected{% endif %}>{{ nome }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Estoque padrao deste destino</label>
+        <input type="number" name="estoque_padrao" min="0" value="{{ form.get('estoque_padrao', '0') if form else '0' }}" required>
+
+        <label>Limite de alerta deste destino</label>
+        <input type="number" name="limite_alerta" min="0" value="{{ form.get('limite_alerta', '0') if form else '0' }}" required>
+
+        <label>Lote</label>
+        <input type="text" name="numero_lote" value="{{ form.get('numero_lote') if form else '' }}" placeholder="Digite o numero do lote">
+
+        <label>Validade</label>
+        <input type="date" name="data_vencimento" value="{{ form.get('data_vencimento') if form else '' }}" required>
+
+        <label>Como veio esse item</label>
+        <select name="tipo_unidade_entrada" id="tipo_unidade_entrada" required>
+            {% set tipo_entrada_atual = form.get('tipo_unidade_entrada', 'unidade') if form else 'unidade' %}
+            <option value="unidade" {% if tipo_entrada_atual == 'unidade' %}selected{% endif %}>Unidade</option>
+            <option value="caixa" {% if tipo_entrada_atual == 'caixa' %}selected{% endif %}>Caixa</option>
+            <option value="pacote" {% if tipo_entrada_atual == 'pacote' %}selected{% endif %}>Pacote</option>
+            <option value="frasco" {% if tipo_entrada_atual == 'frasco' %}selected{% endif %}>Frasco</option>
+            <option value="ampola" {% if tipo_entrada_atual == 'ampola' %}selected{% endif %}>Ampola</option>
+            <option value="ml" {% if tipo_entrada_atual == 'ml' %}selected{% endif %}>ML</option>
+        </select>
+
+        <label>Quantidade de caixas/pacotes/unidades</label>
+        <input type="number" name="quantidade_embalagens" id="quantidade_embalagens" min="0" value="{{ form.get('quantidade_embalagens', '0') if form else '0' }}" required>
+
+        <label>Quanto vem em cada caixa/pacote/unidade</label>
+        <input type="number" name="unidades_por_embalagem" id="unidades_por_embalagem" min="0" value="{{ form.get('unidades_por_embalagem', '0') if form else '0' }}" required>
+
+        <label>Quantidade total que entra no estoque</label>
+        <input type="number" name="quantidade" id="quantidade_total" min="0" value="{{ form.get('quantidade', '0') if form else '0' }}" readonly required>
+
+        <button type="submit" onclick="this.disabled=true; this.innerText='Salvando...'; this.form.submit();">Salvar Produto</button>
+    </form>
+</section>
+
+<script>
+function atualizarQuantidadeTotal() {
+    const unidadeProduto = document.querySelector('[name="unidade_medida"]');
+    const tipoCampo = document.getElementById("tipo_unidade_entrada");
+    const embalagensCampo = document.getElementById("quantidade_embalagens");
+    const porEmbalagemCampo = document.getElementById("unidades_por_embalagem");
+    const totalCampo = document.getElementById("quantidade_total");
+
+    if (unidadeProduto && tipoCampo && document.activeElement === unidadeProduto) {
+        tipoCampo.value = unidadeProduto.value;
+    }
+
+    const embalagens = parseInt(embalagensCampo.value || "0", 10);
+    const porEmbalagem = parseInt(porEmbalagemCampo.value || "0", 10);
+    totalCampo.value = Math.max(0, embalagens * porEmbalagem);
+}
+
+const unidadeProduto = document.querySelector('[name="unidade_medida"]');
+if (unidadeProduto) {
+    unidadeProduto.addEventListener("change", function () {
+        document.getElementById("tipo_unidade_entrada").value = unidadeProduto.value;
+        atualizarQuantidadeTotal();
+    });
+}
+document.getElementById("tipo_unidade_entrada").addEventListener("change", atualizarQuantidadeTotal);
+document.getElementById("quantidade_embalagens").addEventListener("input", atualizarQuantidadeTotal);
+document.getElementById("unidades_por_embalagem").addEventListener("input", atualizarQuantidadeTotal);
+atualizarQuantidadeTotal();
+</script>
+
 {% endblock %}
-

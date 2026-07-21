@@ -1,4 +1,4 @@
-﻿
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -33,29 +33,9 @@
            Tempo Real
         </a>
 
-        <a href="{{ url_for('produtos') }}"
-           class="{{ 'active' if request.endpoint in ['produtos', 'novo_produto', 'editar_produto'] else '' }}">
-           Estoque
-        </a>
-
-        <a href="{{ url_for('codigo_barras') }}"
-           class="{{ 'active' if request.endpoint == 'codigo_barras' else '' }}">
-           Scanner
-        </a>
-
-        <a href="{{ url_for('historico') }}"
-   class="{% if request.endpoint == 'historico' or request.endpoint == 'historico_produto' %}active{% endif %}">
-   Histórico
-</a>
-
         <a href="{{ url_for('auditoria_usuarios') }}"
            class="{{ 'active' if request.endpoint == 'auditoria_usuarios' else '' }}">
            Auditoria
-        </a>
-
-        <a href="{{ url_for('ordem_compra') }}"
-           class="{{ 'active' if request.endpoint in ['ordem_compra', 'exportar_ordem_compra'] else '' }}">
-           Ordem de Compra
         </a>
 
         <a href="{{ url_for('categorias') }}"

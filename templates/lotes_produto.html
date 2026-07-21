@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Lotes do produto</span>
+            <h1>{{ produto.nome }}</h1>
+            <p>{{ produto.categoria_nome }} • {{ nome_tipo_estoque(produto.tipo_estoque) }}</p>
+        </div>
+        <a class="hero-action-btn" href="{{ url_for('nova_entrada_produto', produto_id=produto.produto_id) }}">Nova entrada</a>
+    </div>
+
+    <section class="products-list-premium">
+        {% for lote in lotes %}
+        <article class="product-card-premium">
+            <div class="product-main-info">
+                <div class="product-title-row">
+                    <div>
+                        <h2>Lote {{ lote.numero_lote or '-' }}</h2>
+                        <span>Entrada em {{ lote.data_entrada }}</span>
+                    </div>
+                    <span class="status-badge-premium ok">{{ lote.quantidade_atual }} unidade(s)</span>
+                </div>
+
+                <div class="product-details-grid">
+                    <div>
+                        <span>Validade</span>
+                        <strong>{{ lote.data_vencimento }}</strong>
+                    </div>
+                    <div>
+                        <span>Aberto em</span>
+                        <strong>{{ lote.data_abertura or '-' }}</strong>
+                    </div>
+                    <div>
+                        <span>Quantidade inicial</span>
+                        <strong>{{ lote.quantidade_inicial }}</strong>
+                    </div>
+                    <div>
+                        <span>Quantidade atual</span>
+                        <strong>{{ lote.quantidade_atual }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="product-actions-panel">
+                <div class="action-section">
+                    <span class="action-section-title">Movimentações do lote</span>
+
+                    <form class="movement-premium" method="POST" action="{{ url_for('retirar_lote', lote_id=lote.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <input type="text" name="motivo" placeholder="Motivo">
+                        <button class="move-remove" type="submit">Retirar</button>
+                    </form>
+
+                    <form class="movement-premium transfer" method="POST" action="{{ url_for('transferir_lote', lote_id=lote.id) }}">
+                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <select name="destino" required>
+                            {% for codigo, nome in estoques_sistema.items() %}
+                            {% if codigo != lote.tipo_estoque %}
+                            <option value="{{ codigo }}">Para {{ nome }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                        <input type="text" name="motivo" placeholder="Motivo">
+                        <button class="move-transfer" type="submit">Transferir</button>
+                    </form>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </section>
+</section>
+
+{% endblock %}

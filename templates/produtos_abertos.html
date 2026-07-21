@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Controle de itens abertos</span>
+            <h1>Produtos abertos</h1>
+            <p>Acompanhe todos os produtos registrados como abertos, com vencimento apos abertura e rastreabilidade.</p>
+        </div>
+        <div class="products-hero-actions">
+            <a class="hero-action-btn" href="{{ url_for('produto_aberto') }}">Registrar abertura</a>
+            <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar ao estoque</a>
+        </div>
+    </div>
+
+    <section class="purchase-metrics-grid opened-summary-grid">
+        <div class="purchase-metric-card">
+            <span>Total registrado</span>
+            <strong>{{ registros|length }}</strong>
+            <small>Produtos abertos encontrados</small>
+        </div>
+
+        <div class="purchase-metric-card danger">
+            <span>Vencidos</span>
+            <strong>{{ total_vencidos }}</strong>
+            <small>Passaram da validade apos aberto</small>
+        </div>
+
+        <div class="purchase-metric-card warning">
+            <span>Vencem hoje</span>
+            <strong>{{ total_vence_hoje }}</strong>
+            <small>Precisam de atencao imediata</small>
+        </div>
+    </section>
+
+    <section class="products-filter-premium">
+        <form method="GET">
+            <div>
+                <label>Buscar produto ou lote</label>
+                <input type="text" name="busca" value="{{ busca }}" placeholder="Digite nome ou lote">
+            </div>
+
+            <div>
+                <label>Estoque</label>
+                <select name="tipo_estoque">
+                    <option value="">Todos</option>
+                    {% for codigo, nome in estoques_sistema.items() %}
+                    <option value="{{ codigo }}" {% if tipo_estoque == codigo %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Status</label>
+                <select name="status">
+                    <option value="">Todos</option>
+                    <option value="aberto" {% if status == 'aberto' %}selected{% endif %}>Aberto valido</option>
+                    <option value="vence_hoje" {% if status == 'vence_hoje' %}selected{% endif %}>Vence hoje</option>
+                    <option value="vencido" {% if status == 'vencido' %}selected{% endif %}>Vencido</option>
+                </select>
+            </div>
+
+            <button type="submit">Filtrar</button>
+            <a class="clear-filter" href="{{ url_for('produtos_abertos') }}">Limpar</a>
+        </form>
+    </section>
+
+    <section class="opened-products-grid">
+        {% for item in registros %}
+        <article class="opened-product-card {{ item.status_abertura }}">
+            <div class="opened-product-head">
+                <div>
+                    <span>{{ item.categoria_nome or 'Sem categoria' }} - {{ nome_tipo_estoque(item.tipo_estoque) }}</span>
+                    <h2>{{ item.produto_nome }}</h2>
+                </div>
+                <strong>
+                    {% if item.status_abertura == 'vencido' %}
+                        Vencido
+                    {% elif item.status_abertura == 'vence_hoje' %}
+                        Vence hoje
+                    {% else %}
+                        Aberto
+                    {% endif %}
+                </strong>
+            </div>
+
+            <div class="opened-product-info">
+                <div>
+                    <span>Lote</span>
+                    <strong>{{ item.numero_lote or '-' }}</strong>
+                </div>
+                <div>
+                    <span>Abertura</span>
+                    <strong>{{ item.data_abertura }}</strong>
+                </div>
+                <div>
+                    <span>Vence apos aberto</span>
+                    <strong>{{ item.vencimento_apos_aberto }}</strong>
+                </div>
+                <div>
+                    <span>Dias</span>
+                    <strong>{{ item.dias_restantes }}</strong>
+                </div>
+                <div>
+                    <span>Quantidade</span>
+                    <strong>{{ item.quantidade }}</strong>
+                </div>
+                <div>
+                    <span>Registrado por</span>
+                    <strong>{{ item.usuario_nome or '-' }}</strong>
+                </div>
+            </div>
+
+            {% if item.observacoes %}
+            <div class="opened-product-note">
+                {{ item.observacoes }}
+            </div>
+            {% endif %}
+        </article>
+        {% else %}
+        <div class="empty-premium products-empty">
+            Nenhum produto aberto encontrado com os filtros selecionados.
+        </div>
+        {% endfor %}
+    </section>
+</section>
+
+{% endblock %}

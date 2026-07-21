@@ -1,11 +1,10 @@
-
 <div class="purchase-items-grid">
     {% for item in lista %}
     <article class="purchase-item-card {{ item.nivel }}">
         <div class="purchase-item-top">
             <div>
                 <h3>{{ item.nome }}</h3>
-                <span>{{ item.categoria }} • Lotes {{ item.lote }}</span>
+                <span>{{ item.categoria }} - Lotes {{ item.lote }}</span>
             </div>
 
             <span class="purchase-status {{ item.nivel }}">{{ item.status }}</span>
@@ -18,23 +17,38 @@
             </div>
 
             <div>
-                <span>Mínimo</span>
+                <span>Valido</span>
+                <strong>{{ item.quantidade_valida }}</strong>
+            </div>
+
+            <div>
+                <span>Vencido</span>
+                <strong>{{ item.quantidade_vencida }}</strong>
+            </div>
+
+            <div>
+                <span>Vence 30d</span>
+                <strong>{{ item.quantidade_proxima_vencimento }}</strong>
+            </div>
+
+            <div>
+                <span>Minimo</span>
                 <strong>{{ item.limite_alerta }}</strong>
             </div>
 
             <div>
-                <span>Padrão</span>
+                <span>Padrao</span>
                 <strong>{{ item.estoque_padrao }}</strong>
             </div>
 
             <div class="suggestion-box">
-                <span>Sugerido</span>
+                <span>Comprar</span>
                 <strong>{{ item.sugestao }}</strong>
             </div>
         </div>
 
         <div class="purchase-progress-wrap">
-            {% set porcentagem = (item.quantidade_atual / item.estoque_padrao * 100) if item.estoque_padrao > 0 else 0 %}
+            {% set porcentagem = (item.quantidade_valida / item.estoque_padrao * 100) if item.estoque_padrao > 0 else 0 %}
             {% if porcentagem > 100 %}
                 {% set porcentagem = 100 %}
             {% endif %}
@@ -43,24 +57,21 @@
                 <div style="width: {{ porcentagem }}%;"></div>
             </div>
 
-            <small>Reposição sugerida com base no estoque padrão.</small>
+            <small>{{ item.motivo_compra }}</small>
         </div>
 
         <div class="purchase-decision">
-            {% if item.sugestao_transferencia %}
+            {% if item.acao_operacional %}
                 <div class="decision-card transfer">
-                    <span>Ação sugerida</span>
-                    <strong>Transferir antes de comprar</strong>
-                    <small>
-                        Transferir {{ item.sugestao_transferencia.quantidade }}
-                        de {{ item.sugestao_transferencia.origem_nome }}
-                    </small>
+                    <span>Acao sugerida</span>
+                    <strong>{{ item.acao_sugerida }}</strong>
+                    <small>{{ item.acao_operacional.mensagem }}</small>
                 </div>
             {% else %}
                 <div class="decision-card buy">
-                    <span>Ação sugerida</span>
-                    <strong>Comprar</strong>
-                    <small>Não há saldo disponível no outro estoque.</small>
+                    <span>Acao sugerida</span>
+                    <strong>{{ item.acao_sugerida }}</strong>
+                    <small>{{ item.motivo_compra }}</small>
                 </div>
             {% endif %}
         </div>

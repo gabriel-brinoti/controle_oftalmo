@@ -1,10 +1,20 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block conteudo %}
-<h1>Editar Produto</h1>
 
-<form class="form-card no-enter-submit" method="POST">
-    {% include "produto_form.html" %}
-    <button type="submit">Atualizar Produto</button>
-</form>
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Cadastro principal</span>
+            <h1>Editar Produto</h1>
+            <p>Ajuste os dados principais do produto. Lote, validade e quantidade ficam em Nova entrada.</p>
+        </div>
+        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar aos produtos</a>
+    </div>
+
+    <form class="form-card no-enter-submit" method="POST">
+        {% include "produto_form.html" %}
+        <button type="submit">Atualizar Produto</button>
+    </form>
+</section>
+
 {% endblock %}
-

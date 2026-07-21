@@ -12,8 +12,7 @@
         </div>
 
         <div class="purchase-actions">
-            <a href="{{ url_for('exportar_ordem_compra', formato='xlsx', tipo_estoque=tipo_estoque) }}">Exportar Excel</a>
-            <a href="{{ url_for('exportar_ordem_compra', formato='pdf', tipo_estoque=tipo_estoque) }}">Exportar PDF</a>
+            <a href="{{ url_for('exportar_ordem_compra', formato='xlsx', tipo_estoque=tipo_estoque) }}" download>Exportar Excel</a>
         </div>
     </div>
 

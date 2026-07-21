@@ -2107,6 +2107,14 @@ body {
     font-size: 14px;
 }
 
+.product-details-grid .breakable-code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.35;
+    max-width: 100%;
+}
+
 .stock-progress-wrap {
     background: linear-gradient(135deg, #f8fafc, #ffffff);
     border: 1px solid #e2e8f0;
@@ -7731,15 +7739,25 @@ button,
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    align-items: center;
 }
 
-.expired-actions a {
+.expired-actions form {
+    margin: 0;
+}
+
+.expired-actions a,
+.expired-actions button {
     background: #7f1d1d;
     color: #fff;
     border-radius: 999px;
     padding: 9px 13px;
     text-decoration: none;
     font-weight: 900;
+    border: 0;
+    margin: 0;
+    cursor: pointer;
+    font-size: 14px;
 }
 
 .expired-actions a:last-child {
@@ -7903,4 +7921,113 @@ button,
     color: #0f172a !important;
     border: 1px solid #dbe4ef;
     box-shadow: 0 14px 28px rgba(15, 23, 42, .08) !important;
+}
+
+.opened-summary-grid {
+    margin-top: 18px;
+}
+
+.opened-products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 22px;
+}
+
+.opened-product-card {
+    background: #fffdf7;
+    border: 1px solid #d8e7e3;
+    border-radius: 22px;
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .06);
+}
+
+.opened-product-card.vencido {
+    border-color: #f3b5a9;
+    background: #fff8f6;
+}
+
+.opened-product-card.vence_hoje {
+    border-color: #facc15;
+    background: #fffbea;
+}
+
+.opened-product-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.opened-product-head span {
+    color: #61767a;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+}
+
+.opened-product-head h2 {
+    margin: 6px 0 0;
+    color: #0f172a;
+    font-size: 20px;
+}
+
+.opened-product-head strong {
+    background: #e0f2f1;
+    color: #006b68;
+    border-radius: 999px;
+    padding: 8px 11px;
+    white-space: nowrap;
+}
+
+.opened-product-card.vencido .opened-product-head strong {
+    background: #ffe2dc;
+    color: #c24132;
+}
+
+.opened-product-card.vence_hoje .opened-product-head strong {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.opened-product-info {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.opened-product-info div {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 12px;
+}
+
+.opened-product-info span,
+.opened-product-info strong {
+    display: block;
+}
+
+.opened-product-info span {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.opened-product-info strong {
+    margin-top: 5px;
+    color: #0f172a;
+    overflow-wrap: anywhere;
+}
+
+.opened-product-note {
+    background: #f8fafc;
+    border-radius: 14px;
+    padding: 12px;
+    color: #475569;
+    font-weight: 700;
 }

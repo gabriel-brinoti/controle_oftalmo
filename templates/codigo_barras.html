@@ -42,6 +42,13 @@
                     autofocus
                 >
 
+                <label for="continuousTipoEstoque">Retirar de qual estoque</label>
+                <select id="continuousTipoEstoque" name="tipo_estoque" required>
+                    {% for codigo_estoque, nome in estoques_sistema.items() %}
+                        <option value="{{ codigo_estoque }}" {% if codigo_estoque == tipo_estoque %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
+                </select>
+
                 <div class="continuous-settings">
                     <div>
                         <label>Quantidade por bip</label>
@@ -190,6 +197,13 @@
                     autofocus
                 >
 
+                <label for="scannerTipoEstoque">Consultar em qual estoque</label>
+                <select id="scannerTipoEstoque" name="tipo_estoque" required>
+                    {% for codigo_estoque, nome in estoques_sistema.items() %}
+                        <option value="{{ codigo_estoque }}" {% if codigo_estoque == tipo_estoque %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
+                </select>
+
                 <button type="submit">Buscar produto</button>
 
                 <small class="scanner-help">
@@ -253,6 +267,11 @@
                     </div>
 
                     <div>
+                        <span>Lote usado primeiro</span>
+                        <strong>{{ produto.numero_lote or '-' }}</strong>
+                    </div>
+
+                    <div>
                         <span>Status</span>
                         <strong>{{ status.texto }}</strong>
                     </div>
@@ -270,25 +289,25 @@
                 </div>
 
                 <div class="scanner-actions">
-                    <form method="POST" action="{{ url_for('baixar_estoque', id=produto.id) }}">
+                    <form method="POST" action="{{ url_for('retirar_lote', lote_id=produto.lote_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="scanner-remove" type="submit">Retirar</button>
                     </form>
 
-                    <form method="POST" action="{{ url_for('repor_estoque', id=produto.id) }}">
+                    <form method="POST" action="{{ url_for('repor_lote', lote_id=produto.lote_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="scanner-add" type="submit">Repor</button>
                     </form>
 
-                    <form method="POST" action="{{ url_for('devolver_estoque', id=produto.id) }}">
+                    <form method="POST" action="{{ url_for('repor_lote', lote_id=produto.lote_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="scanner-return" type="submit">Devolver</button>
                     </form>
 
-                    <form method="POST" action="{{ url_for('transferir_estoque', id=produto.id) }}">
+                    <form method="POST" action="{{ url_for('transferir_lote', lote_id=produto.lote_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <select name="destino" required>
                             {% for codigo, nome in estoques_sistema.items() %}

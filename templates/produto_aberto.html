@@ -1,64 +1,90 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block conteudo %}
 
 <section class="products-premium-page">
     <div class="products-hero">
         <div>
-            <span class="dash-eyebrow">Abertura de produto</span>
+            <span class="dash-eyebrow">Produto em uso</span>
             <h1>Produto Aberto</h1>
-            <p>Bipe o código de barras ou procure pelo nome e lote usado.</p>
+            <p>Registre a abertura, retire 1 unidade do lote e mantenha auditoria do item aberto.</p>
         </div>
-        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar ao estoque</a>
+        <div class="products-hero-actions">
+            <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos_abertos') }}">Ver produtos abertos</a>
+            <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar aos produtos</a>
+        </div>
     </div>
 
     <form class="form-card" method="GET">
-        <label>Onde o produto está sendo aberto</label>
+        <label>Produto</label>
+        {% set produto_selecionado = produtos | selectattr('id', 'equalto', produto_id|int) | list | first if produto_id else none %}
+        <input type="hidden" name="produto_id" id="produto_id" value="{{ produto_selecionado.id if produto_selecionado else '' }}">
+        <input type="text" id="produto_busca" list="produtos_lista" value="{{ (produto_selecionado.nome ~ ' - ' ~ produto_selecionado.categoria_nome) if produto_selecionado else '' }}" placeholder="Digite o nome do produto" autocomplete="off">
+        <datalist id="produtos_lista">
+            {% for produto in produtos %}
+            <option value="{{ produto.nome }} - {{ produto.categoria_nome }}"></option>
+            {% endfor %}
+        </datalist>
+
+        <label>CÃ³digo de barras, se preferir bipar</label>
+        <input type="text" name="codigo_barras" value="{{ codigo_barras or '' }}" placeholder="Bipe ou digite o cÃ³digo">
+
+        <label>Estoque de origem</label>
         <select name="tipo_estoque" required>
-            {% for codigo, nome_estoque in estoques_sistema.items() %}
-            <option value="{{ codigo }}" {% if tipo_estoque == codigo %}selected{% endif %}>{{ nome_estoque }}</option>
+            {% for codigo, nome in estoques_sistema.items() %}
+            <option value="{{ codigo }}" {% if tipo_estoque == codigo %}selected{% endif %}>{{ nome }}</option>
             {% endfor %}
         </select>
 
-        <label>Código de barras</label>
-        <input type="text" name="codigo_barras" value="{{ codigo_barras or '' }}" placeholder="Bipe ou digite o código" autofocus>
-
-        <label>Nome do produto, se não tiver código</label>
-        <input type="text" name="nome" value="{{ nome or '' }}" placeholder="Digite o nome do produto">
-
-        <label>Lote utilizado, se não tiver código</label>
-        <input type="text" name="lote" value="{{ lote or '' }}" placeholder="Digite o lote">
-
-        <button type="submit">Buscar produto</button>
+        <button type="submit">Buscar lotes</button>
     </form>
 
-    {% if produto %}
+    {% if lotes %}
     <form class="form-card no-enter-submit" method="POST">
-        <input type="hidden" name="produto_id" value="{{ produto.id }}">
-
-        <label>Nome do produto</label>
-        <input type="text" value="{{ produto.nome }}" readonly>
-
-        <label>Código de barras</label>
-        <input type="text" value="{{ produto.codigo_barras or '-' }}" readonly>
-
-        <label>Lote</label>
-        <input type="text" value="{{ produto.lote or '-' }}" readonly>
-
-        <label>Estoque de origem</label>
-        <input type="text" value="{{ nome_tipo_estoque(produto.tipo_estoque) }}" readonly>
-
-        <label>Quantidade atual</label>
-        <input type="text" value="{{ produto.quantidade_atual }}" readonly>
+        <label>Lote que serÃ¡ aberto</label>
+        <select name="lote_id" required>
+            {% for lote in lotes %}
+            <option value="{{ lote.id }}">
+                {{ lote.nome }} â€” lote {{ lote.numero_lote or 'Sem lote' }} â€” validade {{ lote.data_vencimento or '-' }} â€” qtd {{ lote.quantidade_atual }}
+            </option>
+            {% endfor %}
+        </select>
 
         <label>Data de abertura</label>
         <input type="date" name="data_abertura" value="{{ hoje }}" required>
 
-        <label>Validade após aberto em dias</label>
-        <input type="number" name="validade_apos_aberto_dias" min="1" value="{{ produto.validade_apos_aberto_dias or '' }}" required>
+        <label>Validade apos aberto em dias</label>
+        <input type="number" name="validade_apos_aberto_dias" min="1" placeholder="Opcional: se ficar em branco, usa a validade do lote">
+        <small>Preencha apenas quando o produto tiver prazo proprio depois de aberto. Se deixar vazio, o sistema calcula pela validade original do lote.</small>
+
+        <label>ObservaÃ§Ãµes</label>
+        <textarea name="observacoes"></textarea>
 
         <button type="submit">Registrar abertura e retirar 1 unidade</button>
     </form>
     {% endif %}
 </section>
 
+<script>
+const produtosBusca = [
+    {% for produto in produtos %}
+    {
+        id: "{{ produto.id }}",
+        label: {{ (produto.nome ~ ' â€” ' ~ produto.categoria_nome)|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+function atualizarProdutoSelecionado() {
+    const buscaCampo = document.getElementById("produto_busca");
+    const produtoIdCampo = document.getElementById("produto_id");
+    const encontrado = produtosBusca.find((produto) => produto.label === buscaCampo.value);
+    produtoIdCampo.value = encontrado ? encontrado.id : "";
+}
+
+document.getElementById("produto_busca").addEventListener("input", atualizarProdutoSelecionado);
+document.getElementById("produto_busca").addEventListener("change", atualizarProdutoSelecionado);
+</script>
+
 {% endblock %}
+
+

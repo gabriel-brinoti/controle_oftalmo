@@ -2,17 +2,18 @@
 {% block conteudo %}
 
 <section class="products-premium-page">
-
     <div class="products-hero">
         <div>
             <span class="dash-eyebrow">Gestão de produtos</span>
             <h1>Produtos — {{ tipo_estoque_nome }}</h1>
-            <p>Controle operacional de estoque, validade, movimentações e transferências.</p>
+            <p>Produtos cadastrados uma vez, com estoque separado por local e lotes rastreáveis.</p>
         </div>
 
         <div class="products-hero-actions">
             <a class="hero-action-btn" href="{{ url_for('novo_produto') }}">+ Novo Produto</a>
+            <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('nova_entrada_produto') }}">Nova entrada</a>
             <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produto_aberto') }}">Produto Aberto</a>
+            <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos_abertos') }}">Ver abertos</a>
         </div>
     </div>
 
@@ -20,7 +21,7 @@
         <a href="{{ url_for('produtos') }}" class="{{ 'ativo' if not tipo_estoque else '' }}">Todos</a>
         <a href="{{ url_for('produtos', tipo_estoque='almoxarifado') }}"
             class="{{ 'ativo' if tipo_estoque == 'almoxarifado' else '' }}">Almoxarifado</a>
-        <a href="{{ url_for('produtos', tipo_estoque='farmacia') }}"
+        <a href="{{ url_for('produtos', tipo_estoque='farmacia_satelite') }}"
             class="{{ 'ativo' if tipo_estoque == 'farmacia_satelite' else '' }}">Farmácia Satélite</a>
         <a href="{{ url_for('produtos', tipo_estoque='carrinho_urgencia') }}"
             class="{{ 'ativo' if tipo_estoque == 'carrinho_urgencia' else '' }}">Carrinho de Urgência</a>
@@ -31,16 +32,9 @@
     </div>
 
     <div class="alertas-operacionais">
-        {% if produtos_vencidos %}
-        <div class="alerta-card danger">
-            🚨 {{ produtos_vencidos|length }} produto(s) vencido(s)
-        </div>
-        {% endif %}
-
-        {% set total_baixos_exibido = total_resultados if filtro == 'estoque' else total_estoque_baixo %}
-        {% if total_baixos_exibido %}
+        {% if filtro in ['estoque', 'zerado'] %}
         <div class="alerta-card warning">
-            ⚠ {{ total_baixos_exibido }} produto(s) com estoque baixo
+            {{ total_resultados }} produto(s) encontrado(s) neste filtro
         </div>
         {% endif %}
     </div>
@@ -49,18 +43,16 @@
         <form method="GET">
             <input type="hidden" name="pagina" value="1">
             <div>
-                <label>Buscar produto ou lote</label>
-                <input type="text" name="busca" value="{{ busca }}" placeholder="Digite o nome ou lote">
+                <label>Buscar produto ou código</label>
+                <input type="text" name="busca" value="{{ busca }}" placeholder="Digite o nome ou código">
             </div>
 
             <div>
                 <label>Categoria</label>
                 <select name="categoria_id">
                     <option value="">Todas</option>
-
                     {% for categoria in categorias %}
-                    <option value="{{ categoria.id }}" {% if categoria_id and categoria_id|int==categoria.id
-                        %}selected{% endif %}>
+                    <option value="{{ categoria.id }}" {% if categoria_id and categoria_id|int == categoria.id %}selected{% endif %}>
                         {{ categoria.nome }}
                     </option>
                     {% endfor %}
@@ -70,12 +62,9 @@
             <div>
                 <label>Status</label>
                 <select name="filtro">
-                    <option value="todos" {% if filtro=='todos' %}selected{% endif %}>Todos</option>
-                    <option value="vencidos" {% if filtro=='vencidos' %}selected{% endif %}>Vencidos</option>
-                    <option value="proximos" {% if filtro=='proximos' %}selected{% endif %}>Próximos do vencimento
-                    </option>
-                    <option value="estoque" {% if filtro=='estoque' %}selected{% endif %}>Estoque baixo</option>
-                    <option value="zerado" {% if filtro=='zerado' %}selected{% endif %}>Estoque zerado</option>
+                    <option value="todos" {% if filtro == 'todos' %}selected{% endif %}>Todos</option>
+                    <option value="estoque" {% if filtro == 'estoque' %}selected{% endif %}>Estoque baixo</option>
+                    <option value="zerado" {% if filtro == 'zerado' %}selected{% endif %}>Estoque zerado</option>
                 </select>
             </div>
 
@@ -84,103 +73,98 @@
         </form>
     </section>
 
-    <section class="products-list-premium">
+    {% if mostrar_alertas_gerais and produtos_vencidos %}
+    <section class="expired-products-section">
+        <div class="expired-products-head">
+            <div>
+                <span>Bloqueio de seguranca</span>
+                <h2>Produtos vencidos / bloqueados</h2>
+                <p>Esses lotes nao participam do estoque util. Baixe o vencido para manter auditoria e liberar a entrada de novo lote.</p>
+            </div>
+            <strong>{{ produtos_vencidos|length }} item(ns)</strong>
+        </div>
 
-        {% if produtos_vencidos %}
-        <section class="expired-products-section">
-            <div class="expired-products-head">
+        <div class="expired-products-grid">
+            {% for lote in produtos_vencidos %}
+            <article class="expired-product-card">
                 <div>
-                    <span>Bloqueio de segurança</span>
-                    <h2>Produtos vencidos / bloqueados</h2>
-                    <p>Esses itens não podem ser retirados, transferidos ou usados na operação.</p>
+                    <span class="expired-badge">Vencido</span>
+                    <h3>{{ lote.nome }}</h3>
+                    <p>{{ lote.categoria_nome }} - {{ nome_tipo_estoque(lote.tipo_estoque) }}</p>
                 </div>
-                <strong>{{ produtos_vencidos|length }} item(ns)</strong>
-            </div>
 
-            <div class="expired-products-grid">
-                {% for item in produtos_vencidos %}
-                {% set produto = item.produto %}
-                {% set status = item.status %}
-                <article class="expired-product-card">
+                <div class="expired-product-info">
                     <div>
-                        <span class="expired-badge">Vencido</span>
-                        <h3>{{ produto.nome }}</h3>
-                        <p>{{ produto.categoria_nome }} • {{ nome_tipo_estoque(produto.tipo_estoque) }}</p>
+                        <span>Quantidade</span>
+                        <strong>{{ lote.quantidade_atual }}</strong>
                     </div>
-
-                    <div class="expired-product-info">
-                        <div>
-                            <span>Quantidade</span>
-                            <strong>{{ produto.quantidade_atual }}</strong>
-                        </div>
-                        <div>
-                            <span>Vencimento</span>
-                            <strong>{{ produto.data_vencimento }}</strong>
-                        </div>
-                        <div>
-                            <span>Lote</span>
-                            <strong>{{ produto.lote or '-' }}</strong>
-                        </div>
+                    <div>
+                        <span>Vencimento</span>
+                        <strong>{{ lote.data_vencimento }}</strong>
                     </div>
-
-                    <div class="expired-warning">
-                        {{ status.texto }} — item bloqueado para uso operacional.
+                    <div>
+                        <span>Lote</span>
+                        <strong>{{ lote.numero_lote or '-' }}</strong>
                     </div>
+                </div>
 
-                    <div class="expired-actions">
-                        <a href="{{ url_for('editar_produto', id=produto.id) }}">Ajustar cadastro</a>
-                        <a href="{{ url_for('historico_produto', id=produto.id) }}">Ver histórico</a>
-                    </div>
-                </article>
-                {% endfor %}
-            </div>
-        </section>
-        {% endif %}
+                <div class="expired-warning">
+                    Vencido pela validade original - item bloqueado para uso operacional.
+                </div>
 
+                <div class="expired-actions">
+                    <form method="POST" action="{{ url_for('baixar_lote_vencido', lote_id=lote.id) }}">
+                        <input type="hidden" name="motivo" value="Baixa por vencimento pela tela de produtos">
+                        <button type="submit">Baixar vencido</button>
+                    </form>
+                    <a href="{{ url_for('nova_entrada_produto', produto_id=lote.produto_id) }}">Nova entrada</a>
+                    <a href="{{ url_for('historico_produto', id=lote.produto_id) }}">Ver historico</a>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="products-list-premium">
         {% for item in produtos_status %}
-        {% if item.vencido %}<div class="expired-warning">Produto vencido bloqueado para uso.</div>{% endif %}
+        {% set produto = item.produto %}
         <article class="product-card-premium {{ item.status.tipo }}">
             <div class="product-main-info">
                 <div class="product-title-row">
                     <div>
-                        <h2>{{ item.produto.nome }}</h2>
-                        <span>{{ item.produto.categoria_nome }} • {{ nome_tipo_estoque(item.produto.tipo_estoque) }}</span>
+                        <h2>{{ produto.nome }}</h2>
+                        <span>{{ produto.categoria_nome }} • {{ nome_tipo_estoque(produto.tipo_estoque) }}</span>
                     </div>
-
                     <span class="status-badge-premium {{ item.status.tipo }}">{{ item.status.texto }}</span>
                 </div>
 
                 <div class="product-details-grid">
                     <div>
-                        <span>Lote</span>
-                        <strong>{{ item.produto.lote or '-' }}</strong>
+                        <span>Código de barras</span>
+                        <strong class="breakable-code">{{ produto.codigo_barras or '-' }}</strong>
                     </div>
                     <div>
-                        <span>Código de Barras</span>
-                        <strong>{{ item.produto.codigo_barras or '-' }}</strong>
+                        <span>Unidade</span>
+                        <strong>{{ produto.unidade_medida or '-' }}</strong>
                     </div>
                     <div>
-                        <span>Vencimento</span>
-                        <strong>{{ item.produto.data_vencimento }}</strong>
+                        <span>Lotes ativos</span>
+                        <strong>{{ produto.total_lotes }}</strong>
                     </div>
                     <div>
-                        <span>Aberto em</span>
-                        <strong>{{ item.produto.data_abertura or '-' }}</strong>
-                    </div>
-                    <div>
-                        <span>Vence após aberto</span>
-                        <strong>{{ item.status.vencimento_apos_aberto or '-' }}</strong>
+                        <span>Próximo vencimento</span>
+                        <strong>{{ produto.proximo_vencimento or '-' }}</strong>
                     </div>
                 </div>
 
                 <div class="stock-progress-wrap">
                     <div class="stock-progress-header">
                         <span>Estoque atual</span>
-                        <strong>{{ item.produto.quantidade_atual }} / {{ item.produto.estoque_padrao }}</strong>
+                        <strong>{{ produto.quantidade_atual }} / {{ produto.estoque_padrao }}</strong>
                     </div>
 
-                    {% set porcentagem = (item.produto.quantidade_atual / item.produto.estoque_padrao * 100) if
-                    item.produto.estoque_padrao > 0 else 0 %}
+                    {% set porcentagem = (produto.quantidade_atual / produto.estoque_padrao * 100) if produto.estoque_padrao > 0 else 0 %}
                     {% if porcentagem > 100 %}
                     {% set porcentagem = 100 %}
                     {% endif %}
@@ -189,62 +173,50 @@
                         <div style="width: {{ porcentagem }}%;"></div>
                     </div>
 
-                    <small>Limite de alerta: {{ item.produto.limite_alerta }}</small>
+                    <small>Limite de alerta: {{ produto.limite_alerta }}</small>
                 </div>
             </div>
 
             <div class="product-actions-panel">
                 <div class="action-section">
-                    <span class="action-section-title">Ações rápidas</span>
+                    <span class="action-section-title">Ações</span>
                     <div class="quick-actions-premium">
-                        <a class="pill-action edit"
-                            href="{{ url_for('editar_produto', id=item.produto.id) }}">Editar</a>
-                        <a class="pill-action history"
-                            href="{{ url_for('historico_produto', id=item.produto.id) }}">Histórico</a>
-                        <form method="POST" action="{{ url_for('excluir_produto', id=item.produto.id) }}"
-                            onsubmit="return confirm('Deseja excluir este produto?')">
-                            <button class="pill-action delete" type="submit">Excluir</button>
-                        </form>
+                        <a class="pill-action history" href="{{ url_for('lotes_produto', produto_estoque_id=produto.produto_estoque_id) }}">Ver lotes</a>
+                        <a class="pill-action edit" href="{{ url_for('nova_entrada_produto', produto_id=produto.produto_id) }}">Nova entrada</a>
+                        <a class="pill-action edit" href="{{ url_for('editar_produto', id=produto.produto_id) }}">Editar produto</a>
                     </div>
                 </div>
 
                 <div class="action-section">
                     <span class="action-section-title">Movimentações</span>
 
-                    <form class="movement-premium" method="POST"
-                        action="{{ url_for('baixar_estoque', id=item.produto.id) }}">
+                    <form class="movement-premium" method="POST" action="{{ url_for('retirar_produto_estoque', produto_estoque_id=produto.produto_estoque_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="move-remove" type="submit">Retirar</button>
                     </form>
 
-                    <form class="movement-premium" method="POST"
-                        action="{{ url_for('devolver_estoque', id=item.produto.id) }}">
+                    <form class="movement-premium" method="POST" action="{{ url_for('devolver_produto_estoque', produto_estoque_id=produto.produto_estoque_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="move-return" type="submit">Devolver</button>
                     </form>
 
-                    <form class="movement-premium transfer" method="POST"
-                        action="{{ url_for('transferir_estoque', id=item.produto.id) }}">
+                    {% if produto.tipo_estoque != 'carrinho_urgencia' %}
+                    <form class="movement-premium transfer" method="POST" action="{{ url_for('transferir_produto_estoque', produto_estoque_id=produto.produto_estoque_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
                         <select name="destino" required>
-                            {% for codigo, nome in estoques_sistema.items() %}
-                            {% if codigo != item.produto.tipo_estoque %}
-                            <option value="{{ codigo }}">Para {{ nome }}</option>
+                            {% if produto.tipo_estoque == 'almoxarifado' %}
+                            <option value="farmacia_satelite">Para Farmácia Satélite</option>
+                            <option value="carrinho_urgencia">Para Carrinho de Urgência</option>
+                            {% elif produto.tipo_estoque == 'farmacia_satelite' %}
+                            <option value="carrinho_urgencia">Para Carrinho de Urgência</option>
                             {% endif %}
-                            {% endfor %}
                         </select>
                         <input type="text" name="observacao" placeholder="Observação">
                         <button class="move-transfer" type="submit">Transferir</button>
                     </form>
-
-                    <form class="movement-premium" method="POST"
-                        action="{{ url_for('repor_estoque', id=item.produto.id) }}">
-                        <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
-                        <input type="text" name="observacao" placeholder="Observação">
-                        <button class="move-add" type="submit">Repor</button>
-                    </form>
+                    {% endif %}
                 </div>
             </div>
         </article>
@@ -255,35 +227,17 @@
         {% endfor %}
 
         <div class="paginacao">
-
             {% if pagina > 1 %}
-            <a href="{{ url_for(request.endpoint,
-        tipo_estoque=tipo_estoque,
-        pagina=pagina-1,
-        busca=busca,
-        filtro=filtro,
-        categoria_id=categoria_id
-    ) }}">
-                Anterior
-            </a>
+            <a href="{{ url_for(request.endpoint, tipo_estoque=tipo_estoque, pagina=pagina-1, busca=busca, filtro=filtro, categoria_id=categoria_id) }}">Anterior</a>
             {% endif %}
 
             <span>Página {{ pagina }} de {{ total_paginas }}</span>
 
-            {% if pagina < total_paginas %} <a href="{{ url_for(request.endpoint,
-        tipo_estoque=tipo_estoque,
-        pagina=pagina+1,
-        busca=busca,
-        filtro=filtro,
-        categoria_id=categoria_id
-    ) }}">
-                Próxima
-                </a>
-                {% endif %}
-
+            {% if pagina < total_paginas %}
+            <a href="{{ url_for(request.endpoint, tipo_estoque=tipo_estoque, pagina=pagina+1, busca=busca, filtro=filtro, categoria_id=categoria_id) }}">Próxima</a>
+            {% endif %}
         </div>
     </section>
-
 </section>
 
 {% endblock %}

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Entrada de lote</span>
+            <h1>Nova entrada</h1>
+            <p>Escolha o produto ja cadastrado e informe destino, lote, validade e quantidade recebida.</p>
+        </div>
+        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar aos produtos</a>
+    </div>
+
+    <form class="form-card no-enter-submit" method="POST">
+        <label>Produto</label>
+        {% set produto_id_atual = form.get('produto_id') if form else request.args.get('produto_id') %}
+        {% set produto_selecionado = produtos | selectattr('id', 'equalto', produto_id_atual|int) | list | first if produto_id_atual else none %}
+        {% set produto_busca_atual = form.get('produto_busca') if form else ((produto_selecionado.nome ~ ' - ' ~ produto_selecionado.categoria_nome) if produto_selecionado else '') %}
+        <input type="hidden" name="produto_id" id="produto_id" value="{{ produto_id_atual or '' }}">
+        <input type="text" name="produto_busca" id="produto_busca" list="produtos_lista" value="{{ produto_busca_atual }}" placeholder="Digite o nome do produto" autocomplete="off" required>
+        <datalist id="produtos_lista">
+            {% for produto in produtos %}
+            <option value="{{ produto.nome }} - {{ produto.categoria_nome }}"></option>
+            {% endfor %}
+        </datalist>
+
+        <label>Destino</label>
+        <select name="tipo_estoque" id="tipo_estoque" required>
+            {% set tipo_estoque_atual = form.get('tipo_estoque', 'almoxarifado') if form else 'almoxarifado' %}
+            {% for codigo, nome in estoques_sistema.items() %}
+            <option value="{{ codigo }}" {% if tipo_estoque_atual == codigo %}selected{% endif %}>{{ nome }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Estoque padrao deste destino</label>
+        <input type="number" name="estoque_padrao" id="estoque_padrao" min="0" value="{{ form.get('estoque_padrao', '0') if form else '0' }}" required>
+
+        <label>Limite de alerta deste destino</label>
+        <input type="number" name="limite_alerta" id="limite_alerta" min="0" value="{{ form.get('limite_alerta', '0') if form else '0' }}" required>
+
+        <label>Lote</label>
+        <input type="text" name="numero_lote" value="{{ form.get('numero_lote') if form else '' }}" placeholder="Digite o numero do lote">
+
+        <label>Validade</label>
+        <input type="date" name="data_vencimento" value="{{ form.get('data_vencimento') if form else '' }}" required>
+
+        <label>Como veio esse item</label>
+        <select name="tipo_unidade_entrada" id="tipo_unidade_entrada" required>
+            {% set tipo_entrada_atual = form.get('tipo_unidade_entrada', 'unidade') if form else 'unidade' %}
+            <option value="unidade" {% if tipo_entrada_atual == 'unidade' %}selected{% endif %}>Unidade</option>
+            <option value="caixa" {% if tipo_entrada_atual == 'caixa' %}selected{% endif %}>Caixa</option>
+            <option value="pacote" {% if tipo_entrada_atual == 'pacote' %}selected{% endif %}>Pacote</option>
+            <option value="frasco" {% if tipo_entrada_atual == 'frasco' %}selected{% endif %}>Frasco</option>
+            <option value="ampola" {% if tipo_entrada_atual == 'ampola' %}selected{% endif %}>Ampola</option>
+            <option value="ml" {% if tipo_entrada_atual == 'ml' %}selected{% endif %}>ML</option>
+        </select>
+
+        <label>Quantidade de caixas/pacotes/unidades</label>
+        <input type="number" name="quantidade_embalagens" id="quantidade_embalagens" min="0" value="{{ form.get('quantidade_embalagens', '0') if form else '0' }}" required>
+
+        <label>Quanto vem em cada caixa/pacote/unidade</label>
+        <input type="number" name="unidades_por_embalagem" id="unidades_por_embalagem" min="0" value="{{ form.get('unidades_por_embalagem', '0') if form else '0' }}" required>
+
+        <label>Quantidade total que entra no estoque</label>
+        <input type="number" name="quantidade" id="quantidade_total" min="0" value="{{ form.get('quantidade', '0') if form else '0' }}" readonly required>
+
+        <label>Observacoes</label>
+        <textarea name="observacoes">{{ form.get('observacoes') if form else '' }}</textarea>
+
+        <button type="submit">Salvar entrada</button>
+    </form>
+</section>
+
+<script>
+const produtoConfiguracoes = {{ produto_configuracoes|tojson }};
+const produtosBusca = [
+    {% for produto in produtos %}
+    {
+        id: "{{ produto.id }}",
+        label: {{ (produto.nome ~ ' - ' ~ produto.categoria_nome)|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+const formTemErro = {{ 'true' if form else 'false' }};
+
+function atualizarProdutoSelecionado() {
+    const buscaCampo = document.getElementById("produto_busca");
+    const produtoIdCampo = document.getElementById("produto_id");
+    const encontrado = produtosBusca.find((produto) => produto.label === buscaCampo.value);
+
+    produtoIdCampo.value = encontrado ? encontrado.id : "";
+    atualizarPadraoEstoque(false);
+}
+
+function atualizarPadraoEstoque(sobrescreverCampos = true) {
+    const produtoId = document.getElementById("produto_id").value;
+    const destino = document.getElementById("tipo_estoque").value;
+    const estoquePadraoCampo = document.getElementById("estoque_padrao");
+    const limiteAlertaCampo = document.getElementById("limite_alerta");
+    const config = produtoConfiguracoes[produtoId] && produtoConfiguracoes[produtoId][destino];
+
+    if (!config) {
+        if (sobrescreverCampos) {
+            estoquePadraoCampo.value = 0;
+            limiteAlertaCampo.value = 0;
+        }
+        return;
+    }
+
+    if (sobrescreverCampos) {
+        estoquePadraoCampo.value = config.estoque_padrao || 0;
+        limiteAlertaCampo.value = config.limite_alerta || 0;
+    }
+}
+
+function atualizarQuantidadeTotal() {
+    const embalagens = parseInt(document.getElementById("quantidade_embalagens").value || "0", 10);
+    const porEmbalagemCampo = document.getElementById("unidades_por_embalagem");
+    const totalCampo = document.getElementById("quantidade_total");
+
+    const porEmbalagem = parseInt(porEmbalagemCampo.value || "0", 10);
+    totalCampo.value = Math.max(0, embalagens * porEmbalagem);
+}
+
+document.getElementById("produto_busca").addEventListener("input", atualizarProdutoSelecionado);
+document.getElementById("produto_busca").addEventListener("change", atualizarProdutoSelecionado);
+document.getElementById("tipo_estoque").addEventListener("change", function () {
+    atualizarPadraoEstoque(true);
+});
+document.getElementById("tipo_unidade_entrada").addEventListener("change", atualizarQuantidadeTotal);
+document.getElementById("quantidade_embalagens").addEventListener("input", atualizarQuantidadeTotal);
+document.getElementById("unidades_por_embalagem").addEventListener("input", atualizarQuantidadeTotal);
+atualizarPadraoEstoque(!formTemErro);
+atualizarQuantidadeTotal();
+</script>
+
+{% endblock %}
