@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, g, has_request_context
 import os
 from dotenv import load_dotenv
 import psycopg2
@@ -12,6 +12,7 @@ import smtplib
 from email.message import EmailMessage
 import requests
 import json
+import unicodedata
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -43,7 +44,20 @@ ESTOQUES = {
 
 
 def dias_alerta_vencimento(tipo_estoque):
-    return 30 if tipo_estoque == "carrinho_urgencia" else 15
+    regras = obter_regras_alerta()
+    return regras["dias_alerta_carrinho"] if tipo_estoque == "carrinho_urgencia" else regras["dias_alerta_estoque"]
+
+
+def normalizar_texto_busca(texto):
+    texto = str(texto or "").strip().lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    return "".join(ch for ch in texto if not unicodedata.combining(ch))
+
+
+def sql_sem_acento(campo):
+    origem = "áàãâäéèêëíìîïóòõôöúùûüçñ"
+    destino = "aaaaaeeeeiiiiooooouuuucn"
+    return f"translate(lower(COALESCE({campo}, '')), '{origem}', '{destino}')"
 
 
 def conectar():
@@ -103,6 +117,27 @@ def criar_banco():
     cursor.execute("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE")
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS produto_codigos (
+            id SERIAL PRIMARY KEY,
+            produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+            codigo_barras TEXT NOT NULL,
+            descricao TEXT,
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE (codigo_barras)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_produto_codigos_produto ON produto_codigos(produto_id)")
+
+    cursor.execute("""
+        INSERT INTO produto_codigos (produto_id, codigo_barras, descricao, ativo)
+        SELECT id, TRIM(codigo_barras), 'Código principal importado', TRUE
+        FROM produtos
+        WHERE COALESCE(TRIM(codigo_barras), '') <> ''
+        ON CONFLICT (codigo_barras) DO NOTHING
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS produto_estoques (
             id SERIAL PRIMARY KEY,
             produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
@@ -124,11 +159,17 @@ def criar_banco():
             data_abertura DATE,
             quantidade_inicial INTEGER NOT NULL DEFAULT 0,
             quantidade_atual INTEGER NOT NULL DEFAULT 0,
+            tipo_unidade_entrada TEXT DEFAULT 'unidade',
+            quantidade_embalagens INTEGER NOT NULL DEFAULT 0,
+            unidades_por_embalagem INTEGER NOT NULL DEFAULT 1,
             data_entrada TIMESTAMP NOT NULL DEFAULT NOW(),
             observacoes TEXT,
             ativo BOOLEAN NOT NULL DEFAULT TRUE
         )
     """)
+    cursor.execute("ALTER TABLE lotes ADD COLUMN IF NOT EXISTS tipo_unidade_entrada TEXT DEFAULT 'unidade'")
+    cursor.execute("ALTER TABLE lotes ADD COLUMN IF NOT EXISTS quantidade_embalagens INTEGER NOT NULL DEFAULT 0")
+    cursor.execute("ALTER TABLE lotes ADD COLUMN IF NOT EXISTS unidades_por_embalagem INTEGER NOT NULL DEFAULT 1")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos_abertos (
@@ -204,6 +245,10 @@ def criar_banco():
             alertar_vencimentos BOOLEAN NOT NULL DEFAULT TRUE,
             alertar_estoque BOOLEAN NOT NULL DEFAULT TRUE,
             alertar_ordem_compra BOOLEAN NOT NULL DEFAULT TRUE,
+            dias_alerta_estoque INTEGER NOT NULL DEFAULT 15,
+            dias_alerta_carrinho INTEGER NOT NULL DEFAULT 30,
+            popup_estoque BOOLEAN NOT NULL DEFAULT TRUE,
+            popup_dashboard BOOLEAN NOT NULL DEFAULT TRUE,
             hora_envio TEXT NOT NULL DEFAULT '08:00',
             criado_em TIMESTAMP NOT NULL DEFAULT NOW()
         )
@@ -255,6 +300,10 @@ def criar_banco():
 
     cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS intervalo_minutos INTEGER NOT NULL DEFAULT 720")
     cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS ultimo_envio_whatsapp TIMESTAMP")
+    cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS dias_alerta_estoque INTEGER NOT NULL DEFAULT 15")
+    cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS dias_alerta_carrinho INTEGER NOT NULL DEFAULT 30")
+    cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS popup_estoque BOOLEAN NOT NULL DEFAULT TRUE")
+    cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS popup_dashboard BOOLEAN NOT NULL DEFAULT TRUE")
 
     cursor.execute("SELECT id FROM configuracoes_alerta LIMIT 1")
     config_alerta = cursor.fetchone()
@@ -270,8 +319,12 @@ def criar_banco():
                 alertar_vencimentos,
                 alertar_estoque,
                 alertar_ordem_compra,
+                dias_alerta_estoque,
+                dias_alerta_carrinho,
+                popup_estoque,
+                popup_dashboard,
                 hora_envio
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             "",
             "",
@@ -279,6 +332,10 @@ def criar_banco():
             False,
             False,
             True,
+            True,
+            True,
+            15,
+            30,
             True,
             True,
             "08:00"
@@ -359,6 +416,7 @@ def listar_usuarios():
     cursor.execute("""
         SELECT id, nome, usuario, perfil, ativo, criado_em
         FROM usuarios
+        WHERE ativo = TRUE
         ORDER BY nome
     """)
     usuarios = cursor.fetchall()
@@ -509,11 +567,27 @@ def nome_tipo_estoque(tipo):
     return ESTOQUES.get(tipo, "Almoxarifado")
 
 
+def lote_permite_transferencia_operacional(lote):
+    if not lote:
+        return False
+
+    if lote.get("tipo_estoque") != "carrinho_urgencia":
+        return True
+
+    data_vencimento = converter_data(lote.get("data_vencimento"))
+    if not data_vencimento:
+        return False
+
+    dias_restantes = (data_vencimento - date.today()).days
+    return 0 <= dias_restantes <= dias_alerta_vencimento("carrinho_urgencia")
+
+
 @app.context_processor
 def contexto_global():
     return {
         "estoques_sistema": ESTOQUES,
         "nome_tipo_estoque": nome_tipo_estoque,
+        "lote_permite_transferencia_operacional": lote_permite_transferencia_operacional,
     }
 
 
@@ -653,6 +727,7 @@ def gerar_backup_sistema():
 
     tabelas = [
         "produtos",
+        "produto_codigos",
         "produto_estoques",
         "lotes",
         "movimentacoes",
@@ -785,6 +860,29 @@ def gerar_backup_manual():
     gerar_backup_sistema()
     flash("Backup manual gerado com sucesso.", "sucesso")
     return redirect(url_for("painel_backup"))
+
+
+@app.route("/backup/download/<nome_arquivo>")
+@login_obrigatorio
+@admin_obrigatorio
+def baixar_backup_local(nome_arquivo):
+    garantir_pasta_backup()
+    nome_seguro = os.path.basename(nome_arquivo)
+    if not nome_seguro.endswith(".json"):
+        flash("Arquivo de backup inválido.", "erro")
+        return redirect(url_for("painel_backup"))
+
+    caminho = os.path.join(BACKUP_DIR, nome_seguro)
+    if not os.path.exists(caminho):
+        flash("Arquivo de backup não encontrado.", "erro")
+        return redirect(url_for("painel_backup"))
+
+    return send_file(
+        caminho,
+        as_attachment=True,
+        download_name=nome_seguro,
+        mimetype="application/json"
+    )
 
 @app.route("/restaurar_backup", methods=["GET", "POST"])
 @login_obrigatorio
@@ -923,6 +1021,7 @@ def login():
             session["usuario_nome"] = usuario["nome"]
             session["usuario_login"] = usuario["usuario"]
             session["perfil"] = usuario["perfil"]
+            session["login_alerta_id"] = datetime.now().isoformat(timespec="seconds")
 
             flash("Login realizado com sucesso.", "sucesso")
 
@@ -1202,6 +1301,8 @@ def dashboard():
     produtos_criticos = [item for item in produtos_status if item["status"]["tipo"] != "success"][:8]
     previsoes = sorted(previsoes, key=lambda x: x["dias"])[:5]
     alertas_inteligentes = alertas_inteligentes[:8]
+    regras_alerta = obter_regras_alerta()
+    lotes_proximos_vencimento = buscar_lotes_proximos_vencimento(limite=8) if regras_alerta["popup_dashboard"] else []
 
     return render_template(
         "dashboard.html",
@@ -1215,7 +1316,9 @@ def dashboard():
         grafico_estoque=grafico_estoque,
         grafico_consumo=grafico_consumo,
         info_licenca=situacao_licenca(),
-        transferencias_recentes=transferencias_recentes
+        transferencias_recentes=transferencias_recentes,
+        lotes_proximos_vencimento=lotes_proximos_vencimento,
+        regras_alerta=regras_alerta
     )
 
 
@@ -1440,8 +1543,27 @@ def buscar_produtos_agrupados(tipo_estoque=None, busca="", categoria_id="", filt
         params.append(tipo_estoque)
 
     if busca:
-        query += " AND (p.nome ILIKE %s OR p.codigo_barras ILIKE %s)"
-        params.extend([f"%{busca}%", f"%{busca}%"])
+        busca_normalizada = f"%{normalizar_texto_busca(busca)}%"
+        query += f"""
+            AND (
+                {sql_sem_acento('p.nome')} LIKE %s
+                OR {sql_sem_acento('p.codigo_barras')} LIKE %s
+                OR EXISTS (
+                    SELECT 1
+                    FROM produto_codigos pc
+                    WHERE pc.produto_id = p.id
+                      AND pc.ativo = TRUE
+                      AND {sql_sem_acento('pc.codigo_barras')} LIKE %s
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM lotes lb
+                    WHERE lb.produto_estoque_id = pe.id
+                      AND {sql_sem_acento('lb.numero_lote')} LIKE %s
+                )
+            )
+        """
+        params.extend([busca_normalizada, busca_normalizada, busca_normalizada, busca_normalizada])
 
     if categoria_id:
         query += " AND p.categoria_id = %s"
@@ -1487,6 +1609,7 @@ def buscar_lotes_produto_estoque(produto_estoque_id):
     cursor.execute("""
         SELECT
             l.*,
+            pe.id AS produto_estoque_id,
             pe.tipo_estoque,
             p.id AS produto_id,
             p.nome,
@@ -1504,6 +1627,39 @@ def buscar_lotes_produto_estoque(produto_estoque_id):
     lotes = cursor.fetchall()
     conn.close()
     return lotes
+
+
+def buscar_lotes_operacionais_por_produto_estoque(produto_estoque_ids):
+    ids = [int(item) for item in produto_estoque_ids if item]
+    if not ids:
+        return {}
+
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            l.id,
+            l.produto_estoque_id,
+            l.numero_lote,
+            l.data_vencimento,
+            l.quantidade_atual,
+            l.tipo_unidade_entrada,
+            l.quantidade_embalagens,
+            l.unidades_por_embalagem
+        FROM lotes l
+        WHERE l.produto_estoque_id = ANY(%s)
+          AND l.ativo = TRUE
+          AND l.quantidade_atual > 0
+          AND (l.data_vencimento IS NULL OR l.data_vencimento >= CURRENT_DATE)
+        ORDER BY l.produto_estoque_id, l.data_vencimento ASC NULLS LAST, l.id ASC
+    """, (ids,))
+    lotes = cursor.fetchall()
+    conn.close()
+
+    agrupados = {}
+    for lote in lotes:
+        agrupados.setdefault(lote["produto_estoque_id"], []).append(lote)
+    return agrupados
 
 
 def buscar_lotes_vencidos_bloqueados(tipo_estoque=None, busca="", categoria_id=""):
@@ -1535,14 +1691,80 @@ def buscar_lotes_vencidos_bloqueados(tipo_estoque=None, busca="", categoria_id="
         params.append(tipo_estoque)
 
     if busca:
-        query += " AND (p.nome ILIKE %s OR p.codigo_barras ILIKE %s OR l.numero_lote ILIKE %s)"
-        params.extend([f"%{busca}%", f"%{busca}%", f"%{busca}%"])
+        busca_normalizada = f"%{normalizar_texto_busca(busca)}%"
+        query += f"""
+            AND (
+                {sql_sem_acento('p.nome')} LIKE %s
+                OR {sql_sem_acento('p.codigo_barras')} LIKE %s
+                OR EXISTS (
+                    SELECT 1
+                    FROM produto_codigos pc
+                    WHERE pc.produto_id = p.id
+                      AND pc.ativo = TRUE
+                      AND {sql_sem_acento('pc.codigo_barras')} LIKE %s
+                )
+                OR {sql_sem_acento('l.numero_lote')} LIKE %s
+            )
+        """
+        params.extend([busca_normalizada, busca_normalizada, busca_normalizada, busca_normalizada])
 
     if categoria_id:
         query += " AND p.categoria_id = %s"
         params.append(categoria_id)
 
     query += " ORDER BY l.data_vencimento ASC, p.nome"
+    cursor.execute(query, params)
+    lotes = cursor.fetchall()
+    conn.close()
+    return lotes
+
+
+def buscar_lotes_proximos_vencimento(tipo_estoque=None, limite=8):
+    regras = obter_regras_alerta()
+    dias_estoque = regras["dias_alerta_estoque"]
+    dias_carrinho = regras["dias_alerta_carrinho"]
+
+    conn = conectar()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            l.id,
+            l.numero_lote,
+            l.data_vencimento,
+            l.quantidade_atual,
+            pe.tipo_estoque,
+            p.id AS produto_id,
+            p.nome,
+            c.nome AS categoria_nome,
+            CASE
+                WHEN pe.tipo_estoque = 'carrinho_urgencia' THEN %s
+                ELSE %s
+            END AS prazo_alerta,
+            (l.data_vencimento - CURRENT_DATE) AS dias_restantes
+        FROM lotes l
+        JOIN produto_estoques pe ON pe.id = l.produto_estoque_id
+        JOIN produtos p ON p.id = pe.produto_id
+        JOIN categorias c ON c.id = p.categoria_id
+        WHERE l.ativo = TRUE
+          AND l.quantidade_atual > 0
+          AND l.data_vencimento >= CURRENT_DATE
+          AND (
+              (pe.tipo_estoque = 'carrinho_urgencia' AND l.data_vencimento <= CURRENT_DATE + (%s * INTERVAL '1 day'))
+              OR
+              (pe.tipo_estoque != 'carrinho_urgencia' AND l.data_vencimento <= CURRENT_DATE + (%s * INTERVAL '1 day'))
+          )
+          AND COALESCE(p.ativo, TRUE) = TRUE
+          AND COALESCE(pe.ativo, TRUE) = TRUE
+    """
+    params = [dias_carrinho, dias_estoque, dias_carrinho, dias_estoque]
+
+    if tipo_estoque:
+        query += " AND pe.tipo_estoque = %s"
+        params.append(tipo_estoque)
+
+    query += " ORDER BY l.data_vencimento ASC, p.nome LIMIT %s"
+    params.append(limite)
+
     cursor.execute(query, params)
     lotes = cursor.fetchall()
     conn.close()
@@ -1574,8 +1796,14 @@ def listar_produtos_abertos_registrados(tipo_estoque="", busca="", status=""):
         params.append(tipo_estoque)
 
     if busca:
-        query += " AND (pa.produto_nome ILIKE %s OR pa.numero_lote ILIKE %s)"
-        params.extend([f"%{busca}%", f"%{busca}%"])
+        busca_normalizada = f"%{normalizar_texto_busca(busca)}%"
+        query += f"""
+            AND (
+                {sql_sem_acento('pa.produto_nome')} LIKE %s
+                OR {sql_sem_acento('pa.numero_lote')} LIKE %s
+            )
+        """
+        params.extend([busca_normalizada, busca_normalizada])
 
     if status == "vencido":
         query += " AND pa.vencimento_apos_aberto < CURRENT_DATE"
@@ -1633,8 +1861,27 @@ def listar_produtos_resumo_estoque(tipo_estoque=None, categoria_id=None, busca=N
         params.append(categoria_id)
 
     if busca:
-        query += " AND (p.nome ILIKE %s OR p.codigo_barras ILIKE %s)"
-        params.extend([f"%{busca}%", f"%{busca}%"])
+        busca_normalizada = f"%{normalizar_texto_busca(busca)}%"
+        query += f"""
+            AND (
+                {sql_sem_acento('p.nome')} LIKE %s
+                OR {sql_sem_acento('p.codigo_barras')} LIKE %s
+                OR EXISTS (
+                    SELECT 1
+                    FROM produto_codigos pc
+                    WHERE pc.produto_id = p.id
+                      AND pc.ativo = TRUE
+                      AND {sql_sem_acento('pc.codigo_barras')} LIKE %s
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM lotes lb
+                    WHERE lb.produto_estoque_id = pe.id
+                      AND {sql_sem_acento('lb.numero_lote')} LIKE %s
+                )
+            )
+        """
+        params.extend([busca_normalizada, busca_normalizada, busca_normalizada, busca_normalizada])
 
     query += """
         GROUP BY pe.id, p.id, p.nome, p.categoria_id, p.codigo_barras,
@@ -1683,6 +1930,48 @@ def registrar_movimentacao_lote(cursor, lote, tipo_movimentacao, quantidade, qua
     ))
 
 
+def atualizar_quantidade_lote(cursor, lote_id, quantidade_atual):
+    ativo = quantidade_atual > 0
+    cursor.execute("""
+        UPDATE lotes
+        SET quantidade_atual = %s,
+            ativo = %s
+        WHERE id = %s
+    """, (quantidade_atual, ativo, lote_id))
+
+
+def registrar_codigo_produto(cursor, produto_id, codigo_barras, descricao="Código vinculado ao produto"):
+    codigo = str(codigo_barras or "").strip()
+    if not codigo:
+        return True, None
+
+    cursor.execute("""
+        SELECT produto_id
+        FROM produto_codigos
+        WHERE codigo_barras = %s
+        LIMIT 1
+    """, (codigo,))
+    existente = cursor.fetchone()
+
+    if existente and existente["produto_id"] != int(produto_id):
+        return False, "Este código de barras já está vinculado a outro produto."
+
+    cursor.execute("""
+        INSERT INTO produto_codigos (produto_id, codigo_barras, descricao, ativo)
+        VALUES (%s, %s, %s, TRUE)
+        ON CONFLICT (codigo_barras)
+        DO UPDATE SET ativo = TRUE
+    """, (produto_id, codigo, descricao))
+
+    cursor.execute("""
+        UPDATE produtos
+        SET codigo_barras = COALESCE(NULLIF(TRIM(codigo_barras), ''), %s)
+        WHERE id = %s
+    """, (codigo, produto_id))
+
+    return True, None
+
+
 def buscar_lote_para_movimentacao(cursor, lote_id):
     cursor.execute("""
         SELECT
@@ -1712,15 +2001,19 @@ def buscar_lote_por_codigo_scanner(cursor, codigo_barras, tipo_estoque):
             pe.limite_alerta,
             p.id AS produto_id,
             p.nome,
-            p.codigo_barras,
+            COALESCE(pc.codigo_barras, p.codigo_barras) AS codigo_barras,
             p.unidade_medida,
             p.validade_apos_aberto_dias,
             c.nome AS categoria_nome
         FROM lotes l
         JOIN produto_estoques pe ON pe.id = l.produto_estoque_id
         JOIN produtos p ON p.id = pe.produto_id
+        LEFT JOIN produto_codigos pc
+            ON pc.produto_id = p.id
+           AND pc.codigo_barras = %s
+           AND pc.ativo = TRUE
         LEFT JOIN categorias c ON c.id = p.categoria_id
-        WHERE p.codigo_barras = %s
+        WHERE (p.codigo_barras = %s OR pc.codigo_barras = %s)
           AND pe.tipo_estoque = %s
           AND p.ativo = TRUE
           AND pe.ativo = TRUE
@@ -1729,7 +2022,7 @@ def buscar_lote_por_codigo_scanner(cursor, codigo_barras, tipo_estoque):
           AND (l.data_vencimento IS NULL OR l.data_vencimento >= CURRENT_DATE)
         ORDER BY l.data_vencimento ASC NULLS LAST, l.id ASC
         LIMIT 1
-    """, (codigo_barras, tipo_estoque))
+    """, (codigo_barras, codigo_barras, codigo_barras, tipo_estoque))
     return cursor.fetchone()
 
 
@@ -1800,7 +2093,7 @@ def retirar_lote(lote_id):
         return redirect(request.referrer or url_for("produtos"))
 
     quantidade_posterior = quantidade_anterior - quantidade
-    cursor.execute("UPDATE lotes SET quantidade_atual = %s WHERE id = %s", (quantidade_posterior, lote_id))
+    atualizar_quantidade_lote(cursor, lote_id, quantidade_posterior)
     registrar_movimentacao_lote(
         cursor,
         lote,
@@ -1850,7 +2143,7 @@ def repor_lote(lote_id):
 
     quantidade_anterior = lote["quantidade_atual"]
     quantidade_posterior = quantidade_anterior + quantidade
-    cursor.execute("UPDATE lotes SET quantidade_atual = %s WHERE id = %s", (quantidade_posterior, lote_id))
+    atualizar_quantidade_lote(cursor, lote_id, quantidade_posterior)
     registrar_movimentacao_lote(
         cursor,
         lote,
@@ -1866,6 +2159,52 @@ def repor_lote(lote_id):
     conn.close()
 
     flash("Reposição registrada no lote.", "sucesso")
+    return redirect(request.referrer or url_for("produtos"))
+
+
+@app.route("/lotes/<int:lote_id>/devolver", methods=["POST"])
+@login_obrigatorio
+@alteracao_permitida
+@estoque_obrigatorio
+def devolver_lote(lote_id):
+    try:
+        quantidade = int(request.form.get("quantidade", 0))
+    except ValueError:
+        quantidade = 0
+
+    motivo = "Devolução operacional"
+
+    if quantidade <= 0:
+        flash("Quantidade inválida.", "erro")
+        return redirect(request.referrer or url_for("produtos"))
+
+    conn = conectar()
+    cursor = conn.cursor()
+    lote = buscar_lote_para_movimentacao(cursor, lote_id)
+
+    if not lote:
+        conn.close()
+        flash("Lote não encontrado.", "erro")
+        return redirect(request.referrer or url_for("produtos"))
+
+    quantidade_anterior = lote["quantidade_atual"]
+    quantidade_posterior = quantidade_anterior + quantidade
+    atualizar_quantidade_lote(cursor, lote_id, quantidade_posterior)
+    registrar_movimentacao_lote(
+        cursor,
+        lote,
+        "devolucao",
+        quantidade,
+        quantidade_anterior,
+        quantidade_posterior,
+        motivo,
+        None,
+        lote["tipo_estoque"]
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Devolução registrada no lote.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -1929,6 +2268,83 @@ def baixar_lote_vencido(lote_id):
     flash("Lote vencido baixado do estoque util e mantido no historico.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
+
+@app.route("/lotes/<int:lote_id>/editar", methods=["GET", "POST"])
+@login_obrigatorio
+@alteracao_permitida
+@estoque_obrigatorio
+def editar_lote(lote_id):
+    conn = conectar()
+    cursor = conn.cursor()
+    lote = buscar_lote_para_movimentacao(cursor, lote_id)
+
+    if not lote:
+        conn.close()
+        flash("Lote não encontrado.", "erro")
+        return redirect(url_for("produtos"))
+
+    if request.method == "POST":
+        numero_lote = request.form.get("numero_lote", "").strip()
+        data_vencimento = request.form.get("data_vencimento", "").strip()
+        tipo_unidade_entrada = request.form.get("tipo_unidade_entrada", "unidade").strip()
+
+        try:
+            quantidade_atual = int(request.form.get("quantidade_atual") or 0)
+            quantidade_embalagens = int(request.form.get("quantidade_embalagens") or 0)
+            unidades_por_embalagem = int(request.form.get("unidades_por_embalagem") or 1)
+        except ValueError:
+            quantidade_atual = -1
+            quantidade_embalagens = -1
+            unidades_por_embalagem = -1
+
+        erros = []
+        if not data_vencimento:
+            erros.append("Informe a validade.")
+        if quantidade_atual < 0:
+            erros.append("Quantidade atual não pode ser negativa.")
+        if tipo_unidade_entrada not in ["unidade", "caixa", "pacote"]:
+            erros.append("Tipo de entrada inválido.")
+        if quantidade_embalagens < 0:
+            erros.append("Quantidade de caixas/pacotes/unidades não pode ser negativa.")
+        if unidades_por_embalagem <= 0:
+            erros.append("Quanto vem em cada caixa/pacote deve ser maior que zero.")
+
+        if erros:
+            for erro in erros:
+                flash(erro, "erro")
+            conn.close()
+            return render_template("editar_lote.html", lote=lote, form=request.form)
+
+        cursor.execute("""
+            UPDATE lotes SET
+                numero_lote = %s,
+                data_vencimento = %s,
+                quantidade_atual = %s,
+                ativo = %s,
+                tipo_unidade_entrada = %s,
+                quantidade_embalagens = %s,
+                unidades_por_embalagem = %s
+            WHERE id = %s
+        """, (
+            numero_lote,
+            data_vencimento,
+            quantidade_atual,
+            quantidade_atual > 0,
+            tipo_unidade_entrada,
+            quantidade_embalagens,
+            unidades_por_embalagem,
+            lote_id
+        ))
+        conn.commit()
+        produto_estoque_id = lote["produto_estoque_id"]
+        conn.close()
+        flash("Lote atualizado com sucesso.", "sucesso")
+        return redirect(url_for("lotes_produto", produto_estoque_id=produto_estoque_id))
+
+    conn.close()
+    return render_template("editar_lote.html", lote=lote)
+
+
 @app.route("/lotes/<int:lote_id>/transferir", methods=["POST"])
 @login_obrigatorio
 @alteracao_permitida
@@ -1961,6 +2377,14 @@ def transferir_lote(lote_id):
         conn.close()
         flash("Lote não encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
+    if not lote_permite_transferencia_operacional(lote):
+        conn.close()
+        flash("O Carrinho de Urgência só pode transferir lote válido quando estiver perto do vencimento.", "erro")
+        return redirect(request.referrer or url_for("produtos"))
+    if destino == "almoxarifado":
+        conn.close()
+        flash("O Almoxarifado é estoque de origem. Não envie material de volta para ele por transferência operacional.", "erro")
+        return redirect(request.referrer or url_for("produtos"))
     if lote["tipo_estoque"] == destino:
         conn.close()
         flash("O destino deve ser diferente da origem.", "erro")
@@ -1972,7 +2396,7 @@ def transferir_lote(lote_id):
 
     origem_anterior = lote["quantidade_atual"]
     origem_posterior = origem_anterior - quantidade
-    cursor.execute("UPDATE lotes SET quantidade_atual = %s WHERE id = %s", (origem_posterior, lote_id))
+    atualizar_quantidade_lote(cursor, lote_id, origem_posterior)
 
     cursor.execute("""
         INSERT INTO produto_estoques (
@@ -1998,7 +2422,7 @@ def transferir_lote(lote_id):
     if lote_destino:
         destino_anterior = lote_destino["quantidade_atual"]
         destino_posterior = destino_anterior + quantidade
-        cursor.execute("UPDATE lotes SET quantidade_atual = %s WHERE id = %s", (destino_posterior, lote_destino["id"]))
+        atualizar_quantidade_lote(cursor, lote_destino["id"], destino_posterior)
         lote_destino_id = lote_destino["id"]
     else:
         destino_anterior = 0
@@ -2061,7 +2485,13 @@ def transferir_lote(lote_id):
 def retirar_produto_estoque(produto_estoque_id):
     conn = conectar()
     cursor = conn.cursor()
-    lote = buscar_lote_operacional_por_produto_estoque(cursor, produto_estoque_id)
+    lote_id = request.form.get("lote_id")
+    if lote_id:
+        lote = buscar_lote_para_movimentacao(cursor, lote_id)
+        if lote and lote["produto_estoque_id"] != produto_estoque_id:
+            lote = None
+    else:
+        lote = buscar_lote_operacional_por_produto_estoque(cursor, produto_estoque_id)
     conn.close()
 
     if not lote:
@@ -2093,7 +2523,13 @@ def devolver_produto_estoque(produto_estoque_id):
 
     conn = conectar()
     cursor = conn.cursor()
-    lote = buscar_lote_operacional_por_produto_estoque(cursor, produto_estoque_id)
+    lote_id = request.form.get("lote_id")
+    if lote_id:
+        lote = buscar_lote_para_movimentacao(cursor, lote_id)
+        if lote and lote["produto_estoque_id"] != produto_estoque_id:
+            lote = None
+    else:
+        lote = buscar_lote_operacional_por_produto_estoque(cursor, produto_estoque_id)
 
     if not lote:
         conn.close()
@@ -2102,7 +2538,7 @@ def devolver_produto_estoque(produto_estoque_id):
 
     quantidade_anterior = lote["quantidade_atual"]
     quantidade_posterior = quantidade_anterior + quantidade
-    cursor.execute("UPDATE lotes SET quantidade_atual = %s WHERE id = %s", (quantidade_posterior, lote["id"]))
+    atualizar_quantidade_lote(cursor, lote["id"], quantidade_posterior)
     registrar_movimentacao_lote(
         cursor,
         lote,
@@ -2130,15 +2566,21 @@ def transferir_produto_estoque(produto_estoque_id):
 
     conn = conectar()
     cursor = conn.cursor()
-    lote = buscar_lote_operacional_por_produto_estoque(cursor, produto_estoque_id)
+    lote_id = request.form.get("lote_id")
+    if lote_id:
+        lote = buscar_lote_para_movimentacao(cursor, lote_id)
+        if lote and lote["produto_estoque_id"] != produto_estoque_id:
+            lote = None
+    else:
+        lote = buscar_lote_operacional_por_produto_estoque(cursor, produto_estoque_id)
     conn.close()
 
     if not lote:
         flash("Nenhum lote valido disponivel para transferencia. Verifique os lotes ou faca nova entrada.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
-    if lote["tipo_estoque"] == "carrinho_urgencia":
-        flash("O Carrinho de Urgencia nao deve enviar itens para repor outro estoque.", "erro")
+    if not lote_permite_transferencia_operacional(lote):
+        flash("O Carrinho de Urgencia so pode transferir lote valido quando estiver perto do vencimento.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if destino == "almoxarifado":
@@ -2176,8 +2618,11 @@ def produtos(tipo_estoque=None):
 
     categorias_lista = listar_categorias()
     todos_produtos_status = buscar_produtos_agrupados(tipo_banco, busca, categoria_id, filtro)
-    mostrar_alertas_gerais = tipo_banco is None and filtro == "todos" and not busca and not categoria_id
+    tela_sem_filtro = filtro == "todos" and not busca and not categoria_id
+    mostrar_alertas_gerais = tipo_banco is None and tela_sem_filtro
     produtos_vencidos = buscar_lotes_vencidos_bloqueados() if mostrar_alertas_gerais else []
+    regras_alerta = obter_regras_alerta()
+    lotes_proximos_vencimento = buscar_lotes_proximos_vencimento(tipo_banco) if tela_sem_filtro and regras_alerta["popup_estoque"] else []
 
     pagina = int(request.args.get("pagina", 1))
     por_pagina = 5
@@ -2188,11 +2633,16 @@ def produtos(tipo_estoque=None):
     fim = inicio + por_pagina
 
     produtos_status = todos_produtos_status[inicio:fim]
+    lotes_por_produto_estoque = buscar_lotes_operacionais_por_produto_estoque(
+        [item["produto"]["produto_estoque_id"] for item in produtos_status]
+    )
 
     return render_template(
         "produtos.html",
         produtos_status=produtos_status,
+        lotes_por_produto_estoque=lotes_por_produto_estoque,
         produtos_vencidos=produtos_vencidos,
+        lotes_proximos_vencimento=lotes_proximos_vencimento,
         filtro=filtro,
         busca=busca,
         categoria_id=categoria_id,
@@ -2203,6 +2653,7 @@ def produtos(tipo_estoque=None):
         total_paginas=total_paginas,
         total_resultados=total_produtos,
         mostrar_alertas_gerais=mostrar_alertas_gerais,
+        regras_alerta=regras_alerta,
     )
 
 
@@ -2223,29 +2674,50 @@ def nova_entrada_produto():
     """)
     produtos_lista = cursor.fetchall()
     cursor.execute("""
-        SELECT produto_id, tipo_estoque, estoque_padrao, limite_alerta
-        FROM produto_estoques
-        WHERE COALESCE(ativo, TRUE) = TRUE
+        SELECT
+            pe.produto_id,
+            pe.tipo_estoque,
+            pe.estoque_padrao,
+            pe.limite_alerta,
+            COALESCE((
+                SELECT NULLIF(l.unidades_por_embalagem, 0)
+                FROM lotes l
+                WHERE l.produto_estoque_id = pe.id
+                  AND l.tipo_unidade_entrada IN ('caixa', 'pacote')
+                ORDER BY l.data_entrada DESC, l.id DESC
+                LIMIT 1
+            ), 1) AS unidades_por_embalagem
+        FROM produto_estoques pe
+        WHERE COALESCE(pe.ativo, TRUE) = TRUE
     """)
     produto_configuracoes = {}
     for config in cursor.fetchall():
         produto_configuracoes.setdefault(str(config["produto_id"]), {})[config["tipo_estoque"]] = {
             "estoque_padrao": config["estoque_padrao"],
             "limite_alerta": config["limite_alerta"],
+            "unidades_por_embalagem": config["unidades_por_embalagem"],
         }
 
     if request.method == "POST":
         produto_id = request.form.get("produto_id")
+        codigo_barras = request.form.get("codigo_barras", "").strip()
         tipo_estoque = request.form.get("tipo_estoque", "almoxarifado").strip()
         numero_lote = request.form.get("numero_lote", "").strip()
         data_vencimento = request.form.get("data_vencimento", "").strip()
         tipo_unidade_entrada = request.form.get("tipo_unidade_entrada", "unidade").strip()
         quantidade_embalagens = int(request.form.get("quantidade_embalagens") or 0)
         unidades_por_embalagem = int(request.form.get("unidades_por_embalagem") or 0)
-        quantidade = quantidade_embalagens * unidades_por_embalagem
         estoque_padrao = int(request.form.get("estoque_padrao") or 0)
         limite_alerta = int(request.form.get("limite_alerta") or 0)
-        observacoes = request.form.get("observacoes", "").strip()
+
+        if tipo_estoque != "almoxarifado":
+            tipo_unidade_entrada = "unidade"
+            unidades_por_embalagem = 1
+
+        if tipo_unidade_entrada == "unidade":
+            unidades_por_embalagem = 1
+
+        quantidade = quantidade_embalagens * unidades_por_embalagem
 
         erros = []
         if not produto_id:
@@ -2258,6 +2730,8 @@ def nova_entrada_produto():
             erros.append("Quantidade recebida deve ser maior que zero.")
         if quantidade_embalagens <= 0:
             erros.append("Quantidade de caixas/pacotes/unidades deve ser maior que zero.")
+        if tipo_unidade_entrada not in ["unidade", "caixa", "pacote"]:
+            erros.append("Tipo de entrada inválido.")
         if unidades_por_embalagem <= 0:
             erros.append("Quantidade por caixa/pacote deve ser maior que zero.")
         if estoque_padrao < 0:
@@ -2277,11 +2751,28 @@ def nova_entrada_produto():
             )
 
         try:
+            codigo_ok, codigo_erro = registrar_codigo_produto(
+                cursor,
+                produto_id,
+                codigo_barras,
+                "Codigo informado na nova entrada"
+            )
+            if not codigo_ok:
+                conn.rollback()
+                flash(codigo_erro, "erro")
+                conn.close()
+                return render_template(
+                    "nova_entrada.html",
+                    produtos=produtos_lista,
+                    produto_configuracoes=produto_configuracoes,
+                    form=request.form
+                )
+
             detalhe_quantidade = (
                 f"Entrada em {tipo_unidade_entrada}: "
                 f"{quantidade_embalagens} x {unidades_por_embalagem} = {quantidade} unidade(s)."
             )
-            observacoes_lote = f"{observacoes}\n{detalhe_quantidade}".strip()
+            observacoes_lote = detalhe_quantidade
 
             cursor.execute("""
                 INSERT INTO produto_estoques (
@@ -2299,8 +2790,10 @@ def nova_entrada_produto():
             cursor.execute("""
                 INSERT INTO lotes (
                     produto_estoque_id, numero_lote, data_vencimento,
-                    quantidade_inicial, quantidade_atual, observacoes, ativo
-                ) VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                    quantidade_inicial, quantidade_atual,
+                    tipo_unidade_entrada, quantidade_embalagens, unidades_por_embalagem,
+                    observacoes, ativo
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                 RETURNING id
             """, (
                 produto_estoque_id,
@@ -2308,6 +2801,9 @@ def nova_entrada_produto():
                 data_vencimento,
                 quantidade,
                 quantidade,
+                tipo_unidade_entrada,
+                quantidade_embalagens,
+                unidades_por_embalagem,
                 observacoes_lote
             ))
             lote_id = cursor.fetchone()["id"]
@@ -2384,7 +2880,7 @@ def produto_aberto():
         lote_id = request.form.get("lote_id")
         data_abertura = request.form.get("data_abertura", "").strip()
         validade_apos_aberto_dias = request.form.get("validade_apos_aberto_dias", "").strip()
-        observacoes = request.form.get("observacoes", "").strip()
+        observacoes = ""
 
         erros = []
         abertura = converter_data(data_abertura)
@@ -2440,11 +2936,15 @@ def produto_aberto():
             f"Produto aberto em {formatar_data(abertura)}. "
             f"Vence em {formatar_data(vencimento_apos_aberto)} ({origem_validade})."
         )
-        if observacoes:
-            motivo = f"{motivo} {observacoes}"
-
-        cursor.execute("UPDATE lotes SET quantidade_atual = %s, data_abertura = COALESCE(data_abertura, %s) WHERE id = %s", (
+        cursor.execute("""
+            UPDATE lotes
+            SET quantidade_atual = %s,
+                ativo = %s,
+                data_abertura = COALESCE(data_abertura, %s)
+            WHERE id = %s
+        """, (
             quantidade_posterior,
+            quantidade_posterior > 0,
             data_abertura,
             lote_id
         ))
@@ -2510,8 +3010,19 @@ def produto_aberto():
         """
         params = [tipo_estoque]
         if codigo_barras:
-            query += " AND p.codigo_barras = %s"
-            params.append(codigo_barras)
+            query += """
+                AND (
+                    p.codigo_barras = %s
+                    OR EXISTS (
+                        SELECT 1
+                        FROM produto_codigos pc
+                        WHERE pc.produto_id = p.id
+                          AND pc.ativo = TRUE
+                          AND pc.codigo_barras = %s
+                    )
+                )
+            """
+            params.extend([codigo_barras, codigo_barras])
         elif produto_id:
             query += " AND p.id = %s"
             params.append(produto_id)
@@ -2878,16 +3389,24 @@ def novo_produto():
         categoria_id = request.form.get("categoria_id")
         codigo_barras = request.form.get("codigo_barras", "").strip()
         unidade_medida = request.form.get("unidade_medida", "").strip()
-        observacoes = request.form.get("observacoes", "").strip()
+        observacoes = ""
         tipo_estoque = request.form.get("tipo_estoque", "almoxarifado").strip()
         numero_lote = request.form.get("numero_lote", "").strip()
         data_vencimento = request.form.get("data_vencimento", "").strip()
         tipo_unidade_entrada = request.form.get("tipo_unidade_entrada", unidade_medida or "unidade").strip()
         quantidade_embalagens = int(request.form.get("quantidade_embalagens") or 0)
         unidades_por_embalagem = int(request.form.get("unidades_por_embalagem") or 0)
-        quantidade = quantidade_embalagens * unidades_por_embalagem
         estoque_padrao = int(request.form.get("estoque_padrao") or 0)
         limite_alerta = int(request.form.get("limite_alerta") or 0)
+
+        if tipo_estoque != "almoxarifado":
+            tipo_unidade_entrada = "unidade"
+            unidades_por_embalagem = 1
+
+        if tipo_unidade_entrada == "unidade":
+            unidades_por_embalagem = 1
+
+        quantidade = quantidade_embalagens * unidades_por_embalagem
 
         if tipo_estoque not in ESTOQUES:
             erros.append("Estoque inválido.")
@@ -2897,6 +3416,8 @@ def novo_produto():
             erros.append("Quantidade recebida deve ser maior que zero.")
         if quantidade_embalagens <= 0:
             erros.append("Quantidade de caixas/pacotes/unidades deve ser maior que zero.")
+        if tipo_unidade_entrada not in ["unidade", "caixa", "pacote"]:
+            erros.append("Tipo de entrada inválido.")
         if unidades_por_embalagem <= 0:
             erros.append("Quantidade por caixa/pacote deve ser maior que zero.")
         if estoque_padrao < 0:
@@ -2943,6 +3464,17 @@ def novo_produto():
             ))
             produto_id = cursor.fetchone()["id"]
 
+            codigo_ok, codigo_erro = registrar_codigo_produto(
+                cursor,
+                produto_id,
+                codigo_barras,
+                "Codigo informado no cadastro do produto"
+            )
+            if not codigo_ok:
+                conn.rollback()
+                flash(codigo_erro, "erro")
+                return render_template("novo_produto.html", categorias=categorias_lista, form=request.form)
+
             cursor.execute("""
                 INSERT INTO produto_estoques (
                     produto_id, tipo_estoque, estoque_padrao, limite_alerta, ativo
@@ -2955,13 +3487,15 @@ def novo_produto():
                 f"Entrada inicial em {tipo_unidade_entrada}: "
                 f"{quantidade_embalagens} x {unidades_por_embalagem} = {quantidade} unidade(s)."
             )
-            observacoes_lote = f"{observacoes}\n{detalhe_quantidade}".strip()
+            observacoes_lote = detalhe_quantidade
 
             cursor.execute("""
                 INSERT INTO lotes (
                     produto_estoque_id, numero_lote, data_vencimento,
-                    quantidade_inicial, quantidade_atual, observacoes, ativo
-                ) VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                    quantidade_inicial, quantidade_atual,
+                    tipo_unidade_entrada, quantidade_embalagens, unidades_por_embalagem,
+                    observacoes, ativo
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                 RETURNING id
             """, (
                 produto_estoque_id,
@@ -2969,6 +3503,9 @@ def novo_produto():
                 data_vencimento,
                 quantidade,
                 quantidade,
+                tipo_unidade_entrada,
+                quantidade_embalagens,
+                unidades_por_embalagem,
                 observacoes_lote
             ))
             lote_id = cursor.fetchone()["id"]
@@ -3016,10 +3553,28 @@ def novo_produto():
 @estoque_obrigatorio
 def editar_produto(id):
     categorias_lista = listar_categorias()
+    tipo_estoque_edicao = (
+        request.form.get("tipo_estoque_edicao")
+        or request.args.get("tipo_estoque")
+        or ""
+    ).strip()
     conn = conectar()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM produtos WHERE id = %s", (id,))
     produto = cursor.fetchone()
+    cursor.execute("""
+        SELECT tipo_estoque, estoque_padrao, limite_alerta, ativo
+        FROM produto_estoques
+        WHERE produto_id = %s
+    """, (id,))
+    configuracoes_lista = cursor.fetchall()
+    configuracoes_estoque = {
+        item["tipo_estoque"]: item for item in configuracoes_lista
+    }
+    if tipo_estoque_edicao not in ESTOQUES:
+        tipo_estoque_edicao = next(iter(configuracoes_estoque.keys()), "almoxarifado")
+    if tipo_estoque_edicao not in ESTOQUES:
+        tipo_estoque_edicao = "almoxarifado"
 
     if not produto:
         conn.close()
@@ -3033,7 +3588,15 @@ def editar_produto(id):
             for erro in erros:
                 flash(erro, "erro")
             conn.close()
-            return render_template("editar_produto.html", produto=produto, categorias=categorias_lista)
+            return render_template(
+                "editar_produto.html",
+                produto=produto,
+                categorias=categorias_lista,
+                configuracoes_estoque=configuracoes_estoque,
+                estoques_sistema=ESTOQUES,
+                tipo_estoque_edicao=tipo_estoque_edicao,
+                form=request.form
+            )
 
         cursor.execute("""
             UPDATE produtos SET
@@ -3048,16 +3611,54 @@ def editar_produto(id):
             request.form.get("categoria_id"),
             request.form.get("codigo_barras", "").strip(),
             request.form.get("unidade_medida", "").strip(),
-            request.form.get("observacoes", "").strip(),
+            "",
             id
         ))
+        codigo_ok, codigo_erro = registrar_codigo_produto(
+            cursor,
+            id,
+            request.form.get("codigo_barras", "").strip(),
+            "Codigo informado na edicao do produto"
+        )
+        if not codigo_ok:
+            conn.rollback()
+            flash(codigo_erro, "erro")
+            conn.close()
+            return render_template(
+                "editar_produto.html",
+                produto=produto,
+                categorias=categorias_lista,
+                configuracoes_estoque=configuracoes_estoque,
+                estoques_sistema=ESTOQUES,
+                tipo_estoque_edicao=tipo_estoque_edicao,
+                form=request.form
+            )
+        estoque_padrao = int(request.form.get(f"estoque_padrao_{tipo_estoque_edicao}") or 0)
+        limite_alerta = int(request.form.get(f"limite_alerta_{tipo_estoque_edicao}") or 0)
+        cursor.execute("""
+            INSERT INTO produto_estoques (
+                produto_id, tipo_estoque, estoque_padrao, limite_alerta, ativo
+            ) VALUES (%s, %s, %s, %s, TRUE)
+            ON CONFLICT (produto_id, tipo_estoque)
+            DO UPDATE SET
+                estoque_padrao = EXCLUDED.estoque_padrao,
+                limite_alerta = EXCLUDED.limite_alerta,
+                ativo = TRUE
+        """, (id, tipo_estoque_edicao, estoque_padrao, limite_alerta))
         conn.commit()
         conn.close()
-        flash("Produto atualizado com sucesso.", "sucesso")
-        return redirect(url_for("produtos"))
+        flash(f"Produto atualizado em {nome_tipo_estoque(tipo_estoque_edicao)}.", "sucesso")
+        return redirect(url_for("produtos", tipo_estoque=tipo_estoque_edicao))
 
     conn.close()
-    return render_template("editar_produto.html", produto=produto, categorias=categorias_lista)
+    return render_template(
+        "editar_produto.html",
+        produto=produto,
+        categorias=categorias_lista,
+        configuracoes_estoque=configuracoes_estoque,
+        estoques_sistema=ESTOQUES,
+        tipo_estoque_edicao=tipo_estoque_edicao
+    )
 
 
 @app.route("/produtos/excluir/<int:id>", methods=["POST"])
@@ -3078,6 +3679,9 @@ def excluir_produto(id):
 @login_obrigatorio
 @admin_obrigatorio
 def auditoria_usuarios():
+    data_fim = request.args.get("data_fim") or date.today().isoformat()
+    data_inicio = request.args.get("data_inicio") or (date.today() - timedelta(days=30)).isoformat()
+
     conn = conectar()
     cursor = conn.cursor()
 
@@ -3089,22 +3693,195 @@ def auditoria_usuarios():
             COALESCE(SUM(CASE WHEN tipo_movimentacao IN ('reposicao', 'entrada', 'devolucao', 'transferencia_entrada') THEN quantidade ELSE 0 END), 0) AS total_entradas,
             MAX(data_movimentacao) AS ultima_acao
         FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
         GROUP BY COALESCE(usuario_nome, 'Sistema')
         ORDER BY total_movimentacoes DESC
-    """)
+    """, (data_inicio, data_fim))
     resumo = cursor.fetchall()
 
     cursor.execute("""
         SELECT *
         FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
         ORDER BY data_movimentacao DESC
         LIMIT 30
-    """)
+    """, (data_inicio, data_fim))
     movimentacoes = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN tipo_movimentacao IN ('saida', 'retirada', 'transferencia_saida') THEN 1 ELSE 0 END), 0) AS retiradas,
+            COALESCE(SUM(CASE WHEN tipo_movimentacao IN ('entrada', 'reposicao', 'transferencia_entrada') THEN 1 ELSE 0 END), 0) AS entradas,
+            COALESCE(SUM(CASE WHEN tipo_movimentacao = 'devolucao' THEN 1 ELSE 0 END), 0) AS devolucoes,
+            COALESCE(SUM(CASE WHEN tipo_movimentacao LIKE 'transferencia%%' THEN 1 ELSE 0 END), 0) AS transferencias,
+            COUNT(DISTINCT COALESCE(usuario_nome, 'Sistema')) AS usuarios
+        FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
+    """, (data_inicio, data_fim))
+    indicadores = cursor.fetchone()
+
+    achados = []
+
+    def adicionar_achado(risco, titulo, descricao, evidencia, recomendacao):
+        achados.append({
+            "risco": risco,
+            "titulo": titulo,
+            "descricao": descricao,
+            "evidencia": evidencia,
+            "recomendacao": recomendacao
+        })
+
+    cursor.execute("""
+        SELECT p.nome, c.nome AS categoria_nome, pe.tipo_estoque, l.numero_lote, l.data_vencimento, l.quantidade_atual
+        FROM lotes l
+        JOIN produto_estoques pe ON pe.id = l.produto_estoque_id
+        JOIN produtos p ON p.id = pe.produto_id
+        JOIN categorias c ON c.id = p.categoria_id
+        WHERE l.ativo = TRUE
+          AND l.quantidade_atual > 0
+          AND l.data_vencimento < CURRENT_DATE
+        ORDER BY l.data_vencimento ASC
+        LIMIT 20
+    """)
+    for lote in cursor.fetchall():
+        adicionar_achado(
+            "critico",
+            "Lote vencido ainda com saldo",
+            "Produto vencido permanece com quantidade no estoque útil.",
+            f"{lote['nome']} | {nome_tipo_estoque(lote['tipo_estoque'])} | lote {lote['numero_lote'] or '-'} | venc. {lote['data_vencimento']} | qtd {lote['quantidade_atual']}",
+            "Baixar o vencido, registrar motivo e conferir se houve uso após vencimento."
+        )
+
+    cursor.execute("""
+        SELECT p.nome, pe.tipo_estoque, l.numero_lote, l.data_vencimento, l.data_entrada, l.quantidade_inicial
+        FROM lotes l
+        JOIN produto_estoques pe ON pe.id = l.produto_estoque_id
+        JOIN produtos p ON p.id = pe.produto_id
+        WHERE l.data_entrada >= %s::date
+          AND l.data_entrada < (%s::date + INTERVAL '1 day')
+          AND l.data_vencimento <= (l.data_entrada::date + INTERVAL '30 days')
+        ORDER BY l.data_entrada DESC
+        LIMIT 20
+    """, (data_inicio, data_fim))
+    for lote in cursor.fetchall():
+        adicionar_achado(
+            "alto",
+            "Entrada com validade muito próxima",
+            "Foi lançado lote com vencimento em até 30 dias após a entrada.",
+            f"{lote['nome']} | {nome_tipo_estoque(lote['tipo_estoque'])} | lote {lote['numero_lote'] or '-'} | entrada {lote['data_entrada']} | venc. {lote['data_vencimento']}",
+            "Conferir se o recebimento deveria ter sido aceito e registrar orientação de uso prioritário."
+        )
+
+    cursor.execute("""
+        SELECT COALESCE(usuario_nome, 'Sistema') AS usuario_nome, produto_nome, COUNT(*) AS total, SUM(quantidade) AS quantidade
+        FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
+          AND tipo_movimentacao = 'devolucao'
+        GROUP BY COALESCE(usuario_nome, 'Sistema'), produto_nome
+        HAVING COUNT(*) >= 3
+        ORDER BY total DESC
+        LIMIT 20
+    """, (data_inicio, data_fim))
+    for item in cursor.fetchall():
+        adicionar_achado(
+            "medio",
+            "Devolução repetida do mesmo produto",
+            "Muitas devoluções podem indicar retirada em excesso, fluxo confuso ou erro de registro.",
+            f"{item['produto_nome']} | usuário {item['usuario_nome']} | {item['total']} devoluções | qtd total {item['quantidade']}",
+            "Revisar com a equipe o motivo das devoluções e reforçar o fluxo correto de retirada."
+        )
+
+    cursor.execute("""
+        SELECT COALESCE(usuario_nome, 'Sistema') AS usuario_nome, COUNT(*) AS total
+        FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
+        GROUP BY COALESCE(usuario_nome, 'Sistema')
+        HAVING COUNT(*) >= 40
+        ORDER BY total DESC
+        LIMIT 20
+    """, (data_inicio, data_fim))
+    for item in cursor.fetchall():
+        adicionar_achado(
+            "baixo",
+            "Volume alto de movimentações por usuário",
+            "Usuário concentrou muitas ações no período analisado.",
+            f"{item['usuario_nome']} | {item['total']} movimentações",
+            "Não indica erro sozinho. Usar como trilha para amostragem e conferência de rotina."
+        )
+
+    cursor.execute("""
+        SELECT *
+        FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
+          AND quantidade >= 50
+          AND tipo_movimentacao IN ('saida', 'retirada', 'transferencia_saida')
+        ORDER BY quantidade DESC, data_movimentacao DESC
+        LIMIT 20
+    """, (data_inicio, data_fim))
+    for mov in cursor.fetchall():
+        adicionar_achado(
+            "medio",
+            "Movimentação de saída com quantidade alta",
+            "Saída ou transferência com volume acima do padrão de conferência.",
+            f"{mov['produto_nome']} | {mov['tipo_movimentacao']} | qtd {mov['quantidade']} | usuário {mov['usuario_nome'] or 'Sistema'} | {mov['data_movimentacao']}",
+            "Conferir documento/solicitação que justifica a quantidade movimentada."
+        )
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM movimentacoes
+        WHERE data_movimentacao >= %s::date
+          AND data_movimentacao < (%s::date + INTERVAL '1 day')
+          AND (usuario_nome IS NULL OR usuario_nome = '' OR usuario_nome = 'Sistema')
+    """, (data_inicio, data_fim))
+    sem_usuario = cursor.fetchone()
+    if sem_usuario and sem_usuario["total"] > 0:
+        adicionar_achado(
+            "medio",
+            "Movimentações sem usuário nominal",
+            "Existem registros atribuídos ao sistema ou sem identificação direta de operador.",
+            f"{sem_usuario['total']} movimentação(ões) no período",
+            "Priorizar operações feitas com login individual e evitar uso compartilhado."
+        )
+
+    ordem_risco = {"critico": 1, "alto": 2, "medio": 3, "baixo": 4}
+    achados = sorted(achados, key=lambda item: ordem_risco.get(item["risco"], 9))
+    contagem_risco = {
+        "critico": sum(1 for item in achados if item["risco"] == "critico"),
+        "alto": sum(1 for item in achados if item["risco"] == "alto"),
+        "medio": sum(1 for item in achados if item["risco"] == "medio"),
+        "baixo": sum(1 for item in achados if item["risco"] == "baixo"),
+    }
+
+    recomendacoes = [
+        "Conferir primeiro achados críticos e altos antes de analisar pontos de baixo risco.",
+        "Usar login individual para toda operação de estoque.",
+        "Registrar baixa de vencidos assim que o lote sair do estoque útil.",
+        "Priorizar uso ou troca de produtos próximos do vencimento antes de abrir compra.",
+        "Revisar com a equipe produtos com devolução frequente ou saída em grande quantidade.",
+    ]
 
     conn.close()
 
-    return render_template("auditoria_usuarios.html", resumo=resumo, movimentacoes=movimentacoes)
+    return render_template(
+        "auditoria_usuarios.html",
+        resumo=resumo,
+        movimentacoes=movimentacoes,
+        indicadores=indicadores,
+        achados=achados,
+        contagem_risco=contagem_risco,
+        recomendacoes=recomendacoes,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        gerado_em=datetime.now()
+    )
 
 
 @app.route("/historico")
@@ -3315,7 +4092,6 @@ def montar_painel_relatorios():
 @app.route("/relatorios")
 @login_obrigatorio
 @licenca_obrigatoria
-@admin_obrigatorio
 def relatorios():
     relatorio = montar_painel_relatorios()
     return render_template("relatorios.html", relatorio=relatorio)
@@ -3542,7 +4318,6 @@ def montar_relatorio_movimentacoes(busca="", tipo_movimentacao="", tipo_estoque=
 @app.route("/relatorios/exportar")
 @login_obrigatorio
 @licenca_obrigatoria
-@admin_obrigatorio
 def exportar_relatorio():
     tipo_relatorio = request.args.get("tipo_relatorio", "produtos")
     formato = request.args.get("formato", "xlsx")
@@ -3951,6 +4726,34 @@ def obter_configuracao_alerta():
     config = cursor.fetchone()
     conn.close()
     return config
+
+
+def obter_regras_alerta():
+    padrao = {
+        "dias_alerta_estoque": 15,
+        "dias_alerta_carrinho": 30,
+        "popup_estoque": True,
+        "popup_dashboard": True,
+    }
+
+    if has_request_context() and hasattr(g, "regras_alerta"):
+        return g.regras_alerta
+
+    try:
+        config = obter_configuracao_alerta()
+    except Exception:
+        config = None
+
+    if config:
+        padrao["dias_alerta_estoque"] = int(config.get("dias_alerta_estoque") or 15)
+        padrao["dias_alerta_carrinho"] = int(config.get("dias_alerta_carrinho") or 30)
+        padrao["popup_estoque"] = bool(config.get("popup_estoque"))
+        padrao["popup_dashboard"] = bool(config.get("popup_dashboard"))
+
+    if has_request_context():
+        g.regras_alerta = padrao
+
+    return padrao
 
 
 def registrar_historico_alerta(tipo_alerta, canal, destino, conteudo, status, erro=None):
@@ -4609,23 +5412,34 @@ def editar_usuario(id):
     return render_template("usuario_form.html", usuario=usuario, titulo="Editar Usuário")
 
 
-@app.route("/usuarios/desativar/<int:id>", methods=["POST"])
+@app.route("/usuarios/excluir/<int:id>", methods=["POST"])
 @login_obrigatorio
 @admin_obrigatorio
-def desativar_usuario(id):
+def excluir_usuario(id):
+    if id == session.get("usuario_id"):
+        flash("Você não pode excluir o usuário que está usando agora.", "erro")
+        return redirect(url_for("usuarios"))
+
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE usuarios
-        SET ativo = FALSE
-        WHERE id = %s
-    """, (id,))
+    cursor.execute("SELECT usuario FROM usuarios WHERE id = %s", (id,))
+    usuario = cursor.fetchone()
+    if not usuario:
+        conn.close()
+        flash("Usuário não encontrado.", "erro")
+        return redirect(url_for("usuarios"))
 
+    if usuario["usuario"] == "admin":
+        conn.close()
+        flash("O usuário admin principal não pode ser excluído.", "erro")
+        return redirect(url_for("usuarios"))
+
+    cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
     conn.commit()
     conn.close()
 
-    flash("Usuário desativado.", "sucesso")
+    flash("Usuário excluído do sistema.", "sucesso")
     return redirect(url_for("usuarios"))
 
 
@@ -4770,11 +5584,7 @@ def scanner_baixa_rapida():
     estoque_anterior = produto["quantidade_atual"]
     estoque_atual = estoque_anterior - quantidade
 
-    cursor.execute("""
-        UPDATE lotes
-        SET quantidade_atual = %s
-        WHERE id = %s
-    """, (estoque_atual, produto["lote_id"]))
+    atualizar_quantidade_lote(cursor, produto["lote_id"], estoque_atual)
 
     registrar_movimentacao_lote(
         cursor,
@@ -4925,7 +5735,49 @@ def senha_padrao_ativa():
 @licenca_obrigatoria
 @admin_obrigatorio
 def configuracoes():
-    return render_template("configuracoes.html", senha_padrao=senha_padrao_ativa())
+    return render_template(
+        "configuracoes.html",
+        senha_padrao=senha_padrao_ativa(),
+        config_alerta=obter_configuracao_alerta()
+    )
+
+
+@app.route("/configuracoes/regras_sistema", methods=["POST"])
+@login_obrigatorio
+@licenca_obrigatoria
+@alteracao_permitida
+@admin_obrigatorio
+def salvar_regras_sistema():
+    config = obter_configuracao_alerta()
+    dias_alerta_estoque = int(request.form.get("dias_alerta_estoque") or 15)
+    dias_alerta_carrinho = int(request.form.get("dias_alerta_carrinho") or 30)
+    popup_estoque = bool(request.form.get("popup_estoque"))
+    popup_dashboard = bool(request.form.get("popup_dashboard"))
+
+    dias_alerta_estoque = max(1, min(dias_alerta_estoque, 180))
+    dias_alerta_carrinho = max(1, min(dias_alerta_carrinho, 180))
+
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE configuracoes_alerta SET
+            dias_alerta_estoque = %s,
+            dias_alerta_carrinho = %s,
+            popup_estoque = %s,
+            popup_dashboard = %s
+        WHERE id = %s
+    """, (
+        dias_alerta_estoque,
+        dias_alerta_carrinho,
+        popup_estoque,
+        popup_dashboard,
+        config["id"]
+    ))
+    conn.commit()
+    conn.close()
+
+    flash("Regras do sistema salvas com sucesso.", "sucesso")
+    return redirect(url_for("configuracoes"))
 
 
 @app.route("/configuracoes/alterar_senha", methods=["POST"])

@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS produtos (
     criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS produto_codigos (
+    id SERIAL PRIMARY KEY,
+    produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+    codigo_barras TEXT NOT NULL,
+    descricao TEXT,
+    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (codigo_barras)
+);
+
 CREATE TABLE IF NOT EXISTS produto_estoques (
     id SERIAL PRIMARY KEY,
     produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
@@ -56,6 +66,9 @@ CREATE TABLE IF NOT EXISTS lotes (
     data_abertura DATE,
     quantidade_inicial INTEGER NOT NULL DEFAULT 0,
     quantidade_atual INTEGER NOT NULL DEFAULT 0,
+    tipo_unidade_entrada TEXT DEFAULT 'unidade',
+    quantidade_embalagens INTEGER NOT NULL DEFAULT 0,
+    unidades_por_embalagem INTEGER NOT NULL DEFAULT 1,
     data_entrada TIMESTAMP NOT NULL DEFAULT NOW(),
     observacoes TEXT,
     ativo BOOLEAN NOT NULL DEFAULT TRUE
@@ -153,6 +166,7 @@ CREATE TABLE IF NOT EXISTS ordens_compra (
 );
 
 CREATE INDEX IF NOT EXISTS idx_produtos_nome ON produtos (nome);
+CREATE INDEX IF NOT EXISTS idx_produto_codigos_produto ON produto_codigos (produto_id);
 CREATE INDEX IF NOT EXISTS idx_produto_estoques_produto ON produto_estoques (produto_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_produto_estoque ON lotes (produto_estoque_id);
 CREATE INDEX IF NOT EXISTS idx_lotes_vencimento ON lotes (data_vencimento);

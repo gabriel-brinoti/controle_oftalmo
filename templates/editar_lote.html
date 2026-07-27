@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<section class="products-premium-page">
+    <div class="products-hero">
+        <div>
+            <span class="dash-eyebrow">Lote do produto</span>
+            <h1>Editar lote</h1>
+            <p>{{ lote.nome }} - {{ nome_tipo_estoque(lote.tipo_estoque) }}</p>
+        </div>
+        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('lotes_produto', produto_estoque_id=lote.produto_estoque_id) }}">Voltar aos lotes</a>
+    </div>
+
+    <form class="form-card no-enter-submit" method="POST">
+        <label>Lote</label>
+        <input type="text" name="numero_lote" value="{{ form.get('numero_lote') if form else (lote.numero_lote or '') }}">
+
+        <label>Validade</label>
+        <input type="date" name="data_vencimento" value="{{ form.get('data_vencimento') if form else lote.data_vencimento }}" required>
+
+        <label>Quantidade atual</label>
+        <input type="number" name="quantidade_atual" min="0" value="{{ form.get('quantidade_atual') if form else lote.quantidade_atual }}" required>
+
+        <label>Tipo de entrada</label>
+        {% set tipo_atual = form.get('tipo_unidade_entrada') if form else (lote.tipo_unidade_entrada or 'unidade') %}
+        <select name="tipo_unidade_entrada" required>
+            <option value="unidade" {% if tipo_atual == 'unidade' %}selected{% endif %}>Unidade</option>
+            <option value="caixa" {% if tipo_atual == 'caixa' %}selected{% endif %}>Caixa</option>
+            <option value="pacote" {% if tipo_atual == 'pacote' %}selected{% endif %}>Pacote</option>
+        </select>
+
+        <label>Quantidade de caixas/pacotes/unidades</label>
+        <input type="number" name="quantidade_embalagens" min="0" value="{{ form.get('quantidade_embalagens') if form else (lote.quantidade_embalagens or 0) }}">
+
+        <label>Quanto vem em cada caixa/pacote</label>
+        <input type="number" name="unidades_por_embalagem" min="1" value="{{ form.get('unidades_por_embalagem') if form else (lote.unidades_por_embalagem or 1) }}">
+
+        <button type="submit">Salvar lote</button>
+    </form>
+</section>
+
+{% endblock %}

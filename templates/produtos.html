@@ -26,9 +26,9 @@
         <a href="{{ url_for('produtos', tipo_estoque='carrinho_urgencia') }}"
             class="{{ 'ativo' if tipo_estoque == 'carrinho_urgencia' else '' }}">Carrinho de Urgência</a>
         <a href="{{ url_for('produtos', tipo_estoque=tipo_estoque, filtro='estoque', busca=busca, categoria_id=categoria_id) if tipo_estoque else url_for('produtos', filtro='estoque', busca=busca, categoria_id=categoria_id) }}"
-            class="{{ 'ativo' if filtro == 'estoque' else '' }}">Estoque baixo</a>
+            class="status-tab status-baixo {{ 'ativo' if filtro == 'estoque' else '' }}">Estoque baixo</a>
         <a href="{{ url_for('produtos', tipo_estoque=tipo_estoque, filtro='zerado', busca=busca, categoria_id=categoria_id) if tipo_estoque else url_for('produtos', filtro='zerado', busca=busca, categoria_id=categoria_id) }}"
-            class="{{ 'ativo' if filtro == 'zerado' else '' }}">Estoque zerado</a>
+            class="status-tab status-zerado {{ 'ativo' if filtro == 'zerado' else '' }}">Estoque zerado</a>
     </div>
 
     <div class="alertas-operacionais">
@@ -39,12 +39,47 @@
         {% endif %}
     </div>
 
+    {% if lotes_proximos_vencimento %}
+    <div class="stock-expiry-modal" id="stockExpiryModal" role="dialog" aria-modal="true" aria-labelledby="stockExpiryTitle">
+        <div class="stock-expiry-backdrop" data-close-expiry></div>
+        <div class="stock-expiry-box">
+            <div class="stock-expiry-head">
+                <div>
+                    <span>Atenção ao vencimento</span>
+                    <h2 id="stockExpiryTitle">{{ lotes_proximos_vencimento|length }} lote(s) perto de vencer</h2>
+                    <p>Confira esses materiais antes das movimentações para priorizar uso, troca ou baixa quando necessário.</p>
+                </div>
+                <button type="button" class="stock-expiry-close" data-close-expiry aria-label="Fechar aviso">×</button>
+            </div>
+
+            <div class="stock-expiry-list">
+                {% for lote in lotes_proximos_vencimento %}
+                <article>
+                    <div>
+                        <strong>{{ lote.nome }}</strong>
+                        <span>{{ nome_tipo_estoque(lote.tipo_estoque) }} - lote {{ lote.numero_lote or '-' }}</span>
+                    </div>
+                    <div>
+                        <b>{{ lote.dias_restantes }} dia(s)</b>
+                        <small>vence em {{ lote.data_vencimento }}</small>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div class="stock-expiry-actions">
+                <button type="button" data-close-expiry>Continuar no estoque</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <section class="products-filter-premium">
         <form method="GET">
             <input type="hidden" name="pagina" value="1">
             <div>
-                <label>Buscar produto ou código</label>
-                <input type="text" name="busca" value="{{ busca }}" placeholder="Digite o nome ou código">
+                <label>Buscar produto, código ou lote</label>
+                <input type="text" name="busca" value="{{ busca }}" placeholder="Nome, código de barras ou lote">
             </div>
 
             <div>
@@ -113,6 +148,8 @@
                 </div>
 
                 <div class="expired-actions">
+                    <a href="{{ url_for('editar_lote', lote_id=lote.id) }}">Editar lote</a>
+                    <a href="{{ url_for('editar_produto', id=lote.produto_id, tipo_estoque=lote.tipo_estoque) }}">Editar produto</a>
                     <form method="POST" action="{{ url_for('baixar_lote_vencido', lote_id=lote.id) }}">
                         <input type="hidden" name="motivo" value="Baixa por vencimento pela tela de produtos">
                         <button type="submit">Baixar vencido</button>
@@ -129,6 +166,13 @@
     <section class="products-list-premium">
         {% for item in produtos_status %}
         {% set produto = item.produto %}
+        {% set lotes_operacionais = lotes_por_produto_estoque.get(produto.produto_estoque_id, []) %}
+        {% set transferencia = namespace(disponivel=false) %}
+        {% for lote in lotes_operacionais %}
+            {% if lote_permite_transferencia_operacional(lote) %}
+                {% set transferencia.disponivel = true %}
+            {% endif %}
+        {% endfor %}
         <article class="product-card-premium {{ item.status.tipo }}">
             <div class="product-main-info">
                 <div class="product-title-row">
@@ -183,7 +227,7 @@
                     <div class="quick-actions-premium">
                         <a class="pill-action history" href="{{ url_for('lotes_produto', produto_estoque_id=produto.produto_estoque_id) }}">Ver lotes</a>
                         <a class="pill-action edit" href="{{ url_for('nova_entrada_produto', produto_id=produto.produto_id) }}">Nova entrada</a>
-                        <a class="pill-action edit" href="{{ url_for('editar_produto', id=produto.produto_id) }}">Editar produto</a>
+                        <a class="pill-action edit" href="{{ url_for('editar_produto', id=produto.produto_id, tipo_estoque=produto.tipo_estoque) }}">Editar produto</a>
                     </div>
                 </div>
 
@@ -192,28 +236,44 @@
 
                     <form class="movement-premium" method="POST" action="{{ url_for('retirar_produto_estoque', produto_estoque_id=produto.produto_estoque_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
-                        <input type="text" name="observacao" placeholder="Observação">
+                        <select name="lote_id">
+                            {% for lote in lotes_operacionais %}
+                            <option value="{{ lote.id }}">Lote {{ lote.numero_lote or '-' }} - {{ lote.quantidade_atual }} un. - {{ lote.data_vencimento or '-' }}</option>
+                            {% endfor %}
+                        </select>
                         <button class="move-remove" type="submit">Retirar</button>
                     </form>
 
                     <form class="movement-premium" method="POST" action="{{ url_for('devolver_produto_estoque', produto_estoque_id=produto.produto_estoque_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
-                        <input type="text" name="observacao" placeholder="Observação">
+                        <select name="lote_id">
+                            {% for lote in lotes_operacionais %}
+                            <option value="{{ lote.id }}">Lote {{ lote.numero_lote or '-' }} - {{ lote.quantidade_atual }} un. - {{ lote.data_vencimento or '-' }}</option>
+                            {% endfor %}
+                        </select>
                         <button class="move-return" type="submit">Devolver</button>
                     </form>
 
-                    {% if produto.tipo_estoque != 'carrinho_urgencia' %}
+                    {% if transferencia.disponivel %}
                     <form class="movement-premium transfer" method="POST" action="{{ url_for('transferir_produto_estoque', produto_estoque_id=produto.produto_estoque_id) }}">
                         <input type="number" name="quantidade" min="1" placeholder="Qtd" required>
+                        <select name="lote_id">
+                            {% for lote in lotes_operacionais %}
+                            {% if lote_permite_transferencia_operacional(lote) %}
+                            <option value="{{ lote.id }}">Lote {{ lote.numero_lote or '-' }} - {{ lote.quantidade_atual }} un. - {{ lote.data_vencimento or '-' }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
                         <select name="destino" required>
                             {% if produto.tipo_estoque == 'almoxarifado' %}
                             <option value="farmacia_satelite">Para Farmácia Satélite</option>
                             <option value="carrinho_urgencia">Para Carrinho de Urgência</option>
                             {% elif produto.tipo_estoque == 'farmacia_satelite' %}
                             <option value="carrinho_urgencia">Para Carrinho de Urgência</option>
+                            {% elif produto.tipo_estoque == 'carrinho_urgencia' %}
+                            <option value="farmacia_satelite">Para Farmácia Satélite</option>
                             {% endif %}
                         </select>
-                        <input type="text" name="observacao" placeholder="Observação">
                         <button class="move-transfer" type="submit">Transferir</button>
                     </form>
                     {% endif %}
@@ -239,5 +299,40 @@
         </div>
     </section>
 </section>
+
+{% if lotes_proximos_vencimento %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modal = document.getElementById("stockExpiryModal");
+    if (!modal) {
+        return;
+    }
+
+    const storageKey = "stock-expiry-alert-{{ session.get('usuario_id', 'anon') }}-{{ session.get('login_alerta_id', 'sem-login') }}-{{ tipo_estoque or 'todos' }}-{{ lotes_proximos_vencimento|length }}";
+    if (sessionStorage.getItem(storageKey) === "fechado") {
+        modal.remove();
+        return;
+    }
+
+    function fecharAviso() {
+        sessionStorage.setItem(storageKey, "fechado");
+        modal.classList.add("closing");
+        setTimeout(function () {
+            modal.remove();
+        }, 180);
+    }
+
+    modal.querySelectorAll("[data-close-expiry]").forEach(function (elemento) {
+        elemento.addEventListener("click", fecharAviso);
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            fecharAviso();
+        }
+    });
+});
+</script>
+{% endif %}
 
 {% endblock %}

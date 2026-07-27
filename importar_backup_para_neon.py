@@ -12,6 +12,7 @@ TABELAS_IMPORTADAS = [
     "movimentacoes",
     "lotes",
     "produto_estoques",
+    "produto_codigos",
     "produtos",
     "categorias",
     "usuarios",
@@ -46,6 +47,7 @@ def limpar_tabelas(cursor):
             movimentacoes,
             lotes,
             produto_estoques,
+            produto_codigos,
             produtos,
             categorias,
             usuarios,
@@ -123,6 +125,55 @@ def inserir_produtos(cursor, produtos):
         ))
 
 
+def inserir_produto_codigos(cursor, produto_codigos, produtos):
+    codigos = []
+    if produto_codigos:
+        codigos.extend(produto_codigos)
+    else:
+        for produto in produtos:
+            codigo = str(produto.get("codigo_barras") or "").strip()
+            if codigo:
+                codigos.append({
+                    "produto_id": produto.get("id"),
+                    "codigo_barras": codigo,
+                    "descricao": "Codigo principal importado",
+                    "ativo": True,
+                    "criado_em": produto.get("criado_em"),
+                })
+
+    for item in codigos:
+        codigo = str(item.get("codigo_barras") or "").strip()
+        if not codigo:
+            continue
+        if item.get("id"):
+            cursor.execute("""
+                INSERT INTO produto_codigos (
+                    id, produto_id, codigo_barras, descricao, ativo, criado_em
+                ) VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamp, NOW()))
+                ON CONFLICT (codigo_barras) DO NOTHING
+            """, (
+                item.get("id"),
+                item.get("produto_id"),
+                codigo,
+                item.get("descricao"),
+                item.get("ativo", True),
+                item.get("criado_em"),
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO produto_codigos (
+                    produto_id, codigo_barras, descricao, ativo, criado_em
+                ) VALUES (%s, %s, %s, %s, COALESCE(%s::timestamp, NOW()))
+                ON CONFLICT (codigo_barras) DO NOTHING
+            """, (
+                item.get("produto_id"),
+                codigo,
+                item.get("descricao"),
+                item.get("ativo", True),
+                item.get("criado_em"),
+            ))
+
+
 def inserir_produto_estoques(cursor, produto_estoques):
     for item in produto_estoques:
         cursor.execute("""
@@ -146,8 +197,9 @@ def inserir_lotes(cursor, lotes):
             INSERT INTO lotes (
                 id, produto_estoque_id, numero_lote, data_vencimento,
                 data_abertura, quantidade_inicial, quantidade_atual,
+                tipo_unidade_entrada, quantidade_embalagens, unidades_por_embalagem,
                 data_entrada, observacoes, ativo
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s::timestamp, NOW()), %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s::timestamp, NOW()), %s, %s)
             ON CONFLICT (id) DO NOTHING
         """, (
             lote.get("id"),
@@ -157,6 +209,9 @@ def inserir_lotes(cursor, lotes):
             lote.get("data_abertura"),
             lote.get("quantidade_inicial"),
             lote.get("quantidade_atual"),
+            lote.get("tipo_unidade_entrada", "unidade"),
+            lote.get("quantidade_embalagens", 0),
+            lote.get("unidades_por_embalagem", 1),
             lote.get("data_entrada"),
             lote.get("observacoes"),
             lote.get("ativo", True),
@@ -271,6 +326,7 @@ def ajustar_sequences(cursor):
     sequences = {
         "categorias": "categorias_id_seq",
         "produtos": "produtos_id_seq",
+        "produto_codigos": "produto_codigos_id_seq",
         "produto_estoques": "produto_estoques_id_seq",
         "lotes": "lotes_id_seq",
         "movimentacoes": "movimentacoes_id_seq",
@@ -308,6 +364,11 @@ def importar(database_url, backup_path, reset=False, dry_run=False):
         inserir_usuarios(cursor, dados_originais.get("usuarios", []))
         inserir_admin_de_usuarios(cursor, dados_originais.get("usuarios", []))
         inserir_produtos(cursor, migrado["produtos"])
+        inserir_produto_codigos(
+            cursor,
+            dados_originais.get("produto_codigos", []),
+            migrado["produtos"]
+        )
         inserir_produto_estoques(cursor, migrado["produto_estoques"])
         inserir_lotes(cursor, migrado["lotes"])
         inserir_movimentacoes(cursor, migrado["movimentacoes"])

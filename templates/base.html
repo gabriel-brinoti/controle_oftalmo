@@ -28,11 +28,6 @@
    Dashboard
 </a>
 
-        <a href="{{ url_for('dashboard_tempo_real') }}"
-           class="{{ 'active' if request.endpoint == 'dashboard_tempo_real' else '' }}">
-           Tempo Real
-        </a>
-
         <a href="{{ url_for('auditoria_usuarios') }}"
            class="{{ 'active' if request.endpoint == 'auditoria_usuarios' else '' }}">
            Auditoria
@@ -83,6 +78,11 @@
         <a href="{{ url_for('ordem_compra') }}"
            class="{{ 'active' if request.endpoint in ['ordem_compra', 'exportar_ordem_compra'] else '' }}">
            Ordem de Compra
+        </a>
+
+        <a href="{{ url_for('relatorios') }}"
+           class="{{ 'active' if request.endpoint == 'relatorios' else '' }}">
+           Relatórios
         </a>
 
     {% endif %}

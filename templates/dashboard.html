@@ -4,6 +4,41 @@
 
 <section class="ho-dashboard">
 
+    {% if lotes_proximos_vencimento %}
+    <div class="stock-expiry-modal" id="adminExpiryModal" role="dialog" aria-modal="true" aria-labelledby="adminExpiryTitle">
+        <div class="stock-expiry-backdrop" data-close-expiry></div>
+        <div class="stock-expiry-box">
+            <div class="stock-expiry-head">
+                <div>
+                    <span>Atenção ao vencimento</span>
+                    <h2 id="adminExpiryTitle">{{ lotes_proximos_vencimento|length }} lote(s) perto de vencer</h2>
+                    <p>Esses materiais precisam ser acompanhados com a equipe do estoque para priorizar uso, troca ou baixa.</p>
+                </div>
+                <button type="button" class="stock-expiry-close" data-close-expiry aria-label="Fechar aviso">×</button>
+            </div>
+
+            <div class="stock-expiry-list">
+                {% for lote in lotes_proximos_vencimento %}
+                <article>
+                    <div>
+                        <strong>{{ lote.nome }}</strong>
+                        <span>{{ nome_tipo_estoque(lote.tipo_estoque) }} - lote {{ lote.numero_lote or '-' }}</span>
+                    </div>
+                    <div>
+                        <b>{{ lote.dias_restantes }} dia(s)</b>
+                        <small>vence em {{ lote.data_vencimento }}</small>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div class="stock-expiry-actions">
+                <button type="button" data-close-expiry>Estou ciente</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="ho-welcome">
         <h1>Olá, Admin!</h1>
         <p>Bem-vindo ao sistema de Controle de Estoque Oftalmológico.</p>
@@ -140,5 +175,40 @@
     </section>
 
 </section>
+
+{% if lotes_proximos_vencimento %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modal = document.getElementById("adminExpiryModal");
+    if (!modal) {
+        return;
+    }
+
+    const storageKey = "admin-expiry-alert-{{ session.get('usuario_id', 'anon') }}-{{ session.get('login_alerta_id', 'sem-login') }}-{{ lotes_proximos_vencimento|length }}";
+    if (sessionStorage.getItem(storageKey) === "fechado") {
+        modal.remove();
+        return;
+    }
+
+    function fecharAviso() {
+        sessionStorage.setItem(storageKey, "fechado");
+        modal.classList.add("closing");
+        setTimeout(function () {
+            modal.remove();
+        }, 180);
+    }
+
+    modal.querySelectorAll("[data-close-expiry]").forEach(function (elemento) {
+        elemento.addEventListener("click", fecharAviso);
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            fecharAviso();
+        }
+    });
+});
+</script>
+{% endif %}
 
 {% endblock %}

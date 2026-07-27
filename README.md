@@ -1,10 +1,10 @@
-# Controle Oftalmo — Supabase/PostgreSQL
+# Controle Oftalmo - Neon/PostgreSQL
 
 Sistema Flask para controle de qualidade, validade, estoque, histórico, relatórios, dashboard e segurança.
 
 ## Banco de dados
 
-Esta versão usa PostgreSQL via Supabase.
+Esta versão usa PostgreSQL via Neon.
 
 Não usa mais SQLite/database.db.
 
@@ -13,7 +13,7 @@ Não usa mais SQLite/database.db.
 Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-DATABASE_URL=sua_url_do_supabase
+DATABASE_URL=sua_url_do_neon
 SECRET_KEY=sua_chave_secreta
 FLASK_ENV=development
 ```
@@ -62,16 +62,20 @@ gunicorn app:app
 Variáveis de ambiente no Render:
 
 ```text
-DATABASE_URL=sua_url_do_supabase
+DATABASE_URL=sua_url_do_neon
 SECRET_KEY=sua_chave_secreta
 FLASK_ENV=production
+NEON_API_KEY=sua_chave_api_neon
+NEON_PROJECT_ID=id_do_projeto_neon
+NEON_BRANCH_ID=id_da_branch_neon
+NEON_SNAPSHOT_RETENTION_DAYS=30
 ```
 
 ## Observações
 
 - O sistema cria as tabelas automaticamente ao iniciar.
-- Para backup completo do banco, use o painel do Supabase.
-- Para backup operacional, use os relatórios Excel/PDF do sistema.
+- Para backup completo do banco, use snapshots no painel do Neon.
+- Para backup operacional/local, use o backup JSON do sistema e os relatórios Excel.
 
 
 ## Controle de licença mensal
@@ -91,10 +95,11 @@ A tabela `licencas` é criada automaticamente no PostgreSQL.
 Inclui:
 - Almoxarifado
 - Farmácia Satélite
-- Campo `tipo_estoque` em produtos
+- Carrinho de Urgência
+- Produtos separados de configurações por estoque e lotes
 - Filtro de histórico por estoque
-- Movimentações: retirada, devolução e reposição
-- Alerta de vencimento alterado para 5 dias
+- Movimentações: retirada, devolução e transferência
+- Alertas de vencimento configuráveis pelo admin
 
 
 ## Etapa 6.2 - Relatórios separados por estoque

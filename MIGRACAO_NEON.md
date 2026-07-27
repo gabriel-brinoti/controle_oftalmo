@@ -52,11 +52,7 @@ Para backup automatico por snapshot Neon:
 - `NEON_BRANCH_ID`: id da branch, normalmente a branch `production`.
 - `NEON_SNAPSHOT_RETENTION_DAYS`: quantidade de dias para manter snapshots, sugestao `30`.
 
-Depois disso, as variaveis antigas do Supabase podem ser removidas do Render:
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_BACKUP_BUCKET`
+Depois disso, remova do Render qualquer variavel antiga de banco/backup que nao seja mais usada pelo sistema.
 
 ## O que sera migrado
 

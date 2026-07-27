@@ -6,13 +6,28 @@
         <div>
             <span class="dash-eyebrow">Cadastro principal</span>
             <h1>Editar Produto</h1>
-            <p>Ajuste os dados principais do produto. Lote, validade e quantidade ficam em Nova entrada.</p>
+            <p>Ajuste o cadastro e os padroes apenas de {{ nome_tipo_estoque(tipo_estoque_edicao) }}. Lote, validade e quantidade ficam nos lotes.</p>
         </div>
-        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos') }}">Voltar aos produtos</a>
+        <a class="hero-action-btn hero-action-btn-secondary" href="{{ url_for('produtos', tipo_estoque=tipo_estoque_edicao) }}">Voltar aos produtos</a>
     </div>
 
     <form class="form-card no-enter-submit" method="POST">
+        <input type="hidden" name="tipo_estoque_edicao" value="{{ tipo_estoque_edicao }}">
         {% include "produto_form.html" %}
+
+        <h2>Configuracao de {{ nome_tipo_estoque(tipo_estoque_edicao) }}</h2>
+        {% set codigo = tipo_estoque_edicao %}
+        {% set config = configuracoes_estoque.get(codigo) %}
+        <div class="stock-config-edit">
+            <strong>{{ nome_tipo_estoque(tipo_estoque_edicao) }}</strong>
+
+            <label>Estoque padrao</label>
+            <input type="number" name="estoque_padrao_{{ codigo }}" min="0" value="{{ form.get('estoque_padrao_' ~ codigo) if form else (config.estoque_padrao if config else 0) }}">
+
+            <label>Limite de alerta</label>
+            <input type="number" name="limite_alerta_{{ codigo }}" min="0" value="{{ form.get('limite_alerta_' ~ codigo) if form else (config.limite_alerta if config else 0) }}">
+        </div>
+
         <button type="submit">Atualizar Produto</button>
     </form>
 </section>

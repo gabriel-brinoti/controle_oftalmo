@@ -25,11 +25,6 @@
 
             <div class="user-meta">
                 <div>
-                    <span>Status</span>
-                    <strong>{{ 'Ativo' if usuario.ativo else 'Inativo' }}</strong>
-                </div>
-
-                <div>
                     <span>Criado em</span>
                     <strong>{{ usuario.criado_em }}</strong>
                 </div>
@@ -39,8 +34,8 @@
                 <a href="{{ url_for('editar_usuario', id=usuario.id) }}">Editar</a>
 
                 {% if usuario.usuario != 'admin' %}
-                <form method="POST" action="{{ url_for('desativar_usuario', id=usuario.id) }}" onsubmit="return confirm('Deseja desativar este usuário?')">
-                    <button type="submit">Desativar</button>
+                <form method="POST" action="{{ url_for('excluir_usuario', id=usuario.id) }}" onsubmit="return confirm('Deseja excluir este usuário do sistema?')">
+                    <button type="submit">Excluir usuário</button>
                 </form>
                 {% endif %}
             </div>

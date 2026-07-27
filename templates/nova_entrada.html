@@ -24,6 +24,10 @@
             {% endfor %}
         </datalist>
 
+        <label>Codigo de barras desta entrada</label>
+        <input type="text" name="codigo_barras" value="{{ form.get('codigo_barras') if form else '' }}" placeholder="Opcional: bipe ou digite o codigo">
+        <small class="form-help-block">Se for um codigo novo deste mesmo produto, o sistema salva sem apagar os codigos antigos.</small>
+
         <label>Destino</label>
         <select name="tipo_estoque" id="tipo_estoque" required>
             {% set tipo_estoque_atual = form.get('tipo_estoque', 'almoxarifado') if form else 'almoxarifado' %}
@@ -44,28 +48,26 @@
         <label>Validade</label>
         <input type="date" name="data_vencimento" value="{{ form.get('data_vencimento') if form else '' }}" required>
 
-        <label>Como veio esse item</label>
-        <select name="tipo_unidade_entrada" id="tipo_unidade_entrada" required>
-            {% set tipo_entrada_atual = form.get('tipo_unidade_entrada', 'unidade') if form else 'unidade' %}
-            <option value="unidade" {% if tipo_entrada_atual == 'unidade' %}selected{% endif %}>Unidade</option>
-            <option value="caixa" {% if tipo_entrada_atual == 'caixa' %}selected{% endif %}>Caixa</option>
-            <option value="pacote" {% if tipo_entrada_atual == 'pacote' %}selected{% endif %}>Pacote</option>
-            <option value="frasco" {% if tipo_entrada_atual == 'frasco' %}selected{% endif %}>Frasco</option>
-            <option value="ampola" {% if tipo_entrada_atual == 'ampola' %}selected{% endif %}>Ampola</option>
-            <option value="ml" {% if tipo_entrada_atual == 'ml' %}selected{% endif %}>ML</option>
-        </select>
+        <div id="entrada_embalagem_bloco">
+            <label>Tipo de entrada</label>
+            <select name="tipo_unidade_entrada" id="tipo_unidade_entrada" required>
+                {% set tipo_entrada_atual = form.get('tipo_unidade_entrada', 'unidade') if form else 'unidade' %}
+                <option value="unidade" {% if tipo_entrada_atual == 'unidade' %}selected{% endif %}>Unidade</option>
+                <option value="caixa" {% if tipo_entrada_atual == 'caixa' %}selected{% endif %}>Caixa</option>
+                <option value="pacote" {% if tipo_entrada_atual == 'pacote' %}selected{% endif %}>Pacote</option>
+            </select>
 
-        <label>Quantidade de caixas/pacotes/unidades</label>
-        <input type="number" name="quantidade_embalagens" id="quantidade_embalagens" min="0" value="{{ form.get('quantidade_embalagens', '0') if form else '0' }}" required>
+            <label id="label_quantidade_embalagens">Quantidade de caixas/pacotes/unidades</label>
+            <input type="number" name="quantidade_embalagens" id="quantidade_embalagens" min="0" value="{{ form.get('quantidade_embalagens', '0') if form else '0' }}" required>
 
-        <label>Quanto vem em cada caixa/pacote/unidade</label>
-        <input type="number" name="unidades_por_embalagem" id="unidades_por_embalagem" min="0" value="{{ form.get('unidades_por_embalagem', '0') if form else '0' }}" required>
+            <div id="unidades_por_embalagem_bloco">
+                <label>Quanto vem em cada caixa/pacote</label>
+                <input type="number" name="unidades_por_embalagem" id="unidades_por_embalagem" min="0" value="{{ form.get('unidades_por_embalagem', '0') if form else '0' }}" required>
+            </div>
+        </div>
 
-        <label>Quantidade total que entra no estoque</label>
+        <label id="label_quantidade_total">Quantidade total que entra no estoque</label>
         <input type="number" name="quantidade" id="quantidade_total" min="0" value="{{ form.get('quantidade', '0') if form else '0' }}" readonly required>
-
-        <label>Observacoes</label>
-        <textarea name="observacoes">{{ form.get('observacoes') if form else '' }}</textarea>
 
         <button type="submit">Salvar entrada</button>
     </form>
@@ -89,7 +91,8 @@ function atualizarProdutoSelecionado() {
     const encontrado = produtosBusca.find((produto) => produto.label === buscaCampo.value);
 
     produtoIdCampo.value = encontrado ? encontrado.id : "";
-    atualizarPadraoEstoque(false);
+    atualizarPadraoEstoque(true);
+    atualizarQuantidadeTotal();
 }
 
 function atualizarPadraoEstoque(sobrescreverCampos = true) {
@@ -110,27 +113,65 @@ function atualizarPadraoEstoque(sobrescreverCampos = true) {
     if (sobrescreverCampos) {
         estoquePadraoCampo.value = config.estoque_padrao || 0;
         limiteAlertaCampo.value = config.limite_alerta || 0;
+        const porEmbalagemCampo = document.getElementById("unidades_por_embalagem");
+        if (porEmbalagemCampo && (!porEmbalagemCampo.value || porEmbalagemCampo.value === "0")) {
+            porEmbalagemCampo.value = config.unidades_por_embalagem || 1;
+        }
+    }
+}
+
+function atualizarModoDestino() {
+    const destino = document.getElementById("tipo_estoque").value;
+    const tipoCampo = document.getElementById("tipo_unidade_entrada");
+    const porEmbalagemCampo = document.getElementById("unidades_por_embalagem");
+    const blocoPorEmbalagem = document.getElementById("unidades_por_embalagem_bloco");
+    const labelQuantidade = document.getElementById("label_quantidade_embalagens");
+    const labelTotal = document.getElementById("label_quantidade_total");
+
+    if (destino !== "almoxarifado") {
+        tipoCampo.value = "unidade";
+        tipoCampo.disabled = true;
+        porEmbalagemCampo.value = 1;
+        blocoPorEmbalagem.style.display = "none";
+        labelQuantidade.innerText = "Quantidade recebida";
+        labelTotal.innerText = "Quantidade que entra no estoque";
+    } else {
+        tipoCampo.disabled = false;
+        blocoPorEmbalagem.style.display = tipoCampo.value === "unidade" ? "none" : "block";
+        if (tipoCampo.value === "unidade") {
+            porEmbalagemCampo.value = 1;
+        }
+        labelQuantidade.innerText = tipoCampo.value === "unidade" ? "Quantidade de unidades" : "Quantidade de caixas/pacotes";
+        labelTotal.innerText = "Quantidade total que entra no estoque";
     }
 }
 
 function atualizarQuantidadeTotal() {
     const embalagens = parseInt(document.getElementById("quantidade_embalagens").value || "0", 10);
+    const tipoCampo = document.getElementById("tipo_unidade_entrada");
     const porEmbalagemCampo = document.getElementById("unidades_por_embalagem");
     const totalCampo = document.getElementById("quantidade_total");
 
-    const porEmbalagem = parseInt(porEmbalagemCampo.value || "0", 10);
+    const porEmbalagem = tipoCampo.value === "unidade" ? 1 : parseInt(porEmbalagemCampo.value || "0", 10);
     totalCampo.value = Math.max(0, embalagens * porEmbalagem);
+    atualizarModoDestino();
 }
 
 document.getElementById("produto_busca").addEventListener("input", atualizarProdutoSelecionado);
 document.getElementById("produto_busca").addEventListener("change", atualizarProdutoSelecionado);
 document.getElementById("tipo_estoque").addEventListener("change", function () {
     atualizarPadraoEstoque(true);
+    atualizarModoDestino();
+    atualizarQuantidadeTotal();
 });
-document.getElementById("tipo_unidade_entrada").addEventListener("change", atualizarQuantidadeTotal);
+document.getElementById("tipo_unidade_entrada").addEventListener("change", function () {
+    atualizarModoDestino();
+    atualizarQuantidadeTotal();
+});
 document.getElementById("quantidade_embalagens").addEventListener("input", atualizarQuantidadeTotal);
 document.getElementById("unidades_por_embalagem").addEventListener("input", atualizarQuantidadeTotal);
 atualizarPadraoEstoque(!formTemErro);
+atualizarModoDestino();
 atualizarQuantidadeTotal();
 </script>
 

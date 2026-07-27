@@ -25,8 +25,8 @@
             {% endfor %}
         </datalist>
 
-        <label>CÃ³digo de barras, se preferir bipar</label>
-        <input type="text" name="codigo_barras" value="{{ codigo_barras or '' }}" placeholder="Bipe ou digite o cÃ³digo">
+        <label>Código de barras, se preferir bipar</label>
+        <input type="text" name="codigo_barras" value="{{ codigo_barras or '' }}" placeholder="Bipe ou digite o código">
 
         <label>Estoque de origem</label>
         <select name="tipo_estoque" required>
@@ -40,11 +40,11 @@
 
     {% if lotes %}
     <form class="form-card no-enter-submit" method="POST">
-        <label>Lote que serÃ¡ aberto</label>
+        <label>Lote que será aberto</label>
         <select name="lote_id" required>
             {% for lote in lotes %}
             <option value="{{ lote.id }}">
-                {{ lote.nome }} â€” lote {{ lote.numero_lote or 'Sem lote' }} â€” validade {{ lote.data_vencimento or '-' }} â€” qtd {{ lote.quantidade_atual }}
+                {{ lote.nome }} - lote {{ lote.numero_lote or 'Sem lote' }} - validade {{ lote.data_vencimento or '-' }} - qtd {{ lote.quantidade_atual }}
             </option>
             {% endfor %}
         </select>
@@ -52,12 +52,9 @@
         <label>Data de abertura</label>
         <input type="date" name="data_abertura" value="{{ hoje }}" required>
 
-        <label>Validade apos aberto em dias</label>
+        <label>Validade após aberto em dias</label>
         <input type="number" name="validade_apos_aberto_dias" min="1" placeholder="Opcional: se ficar em branco, usa a validade do lote">
-        <small>Preencha apenas quando o produto tiver prazo proprio depois de aberto. Se deixar vazio, o sistema calcula pela validade original do lote.</small>
-
-        <label>ObservaÃ§Ãµes</label>
-        <textarea name="observacoes"></textarea>
+        <small class="form-help-block">Preencha apenas quando o produto tiver prazo próprio depois de aberto. Se deixar vazio, o sistema calcula pela validade original do lote.</small>
 
         <button type="submit">Registrar abertura e retirar 1 unidade</button>
     </form>
@@ -69,7 +66,7 @@ const produtosBusca = [
     {% for produto in produtos %}
     {
         id: "{{ produto.id }}",
-        label: {{ (produto.nome ~ ' â€” ' ~ produto.categoria_nome)|tojson }}
+        label: {{ (produto.nome ~ ' - ' ~ produto.categoria_nome)|tojson }}
     }{% if not loop.last %},{% endif %}
     {% endfor %}
 ];

@@ -63,6 +63,10 @@
                     <span>{{ backup.tamanho }} KB</span>
                     <small>{{ backup.modificado }}</small>
 
+                    <a class="pill-action history" href="{{ url_for('baixar_backup_local', nome_arquivo=backup.nome) }}" download>
+                        Baixar
+                    </a>
+
                     <form method="POST" action="{{ url_for('restaurar_backup_local', nome_arquivo=backup.nome) }}"
                         onsubmit="return confirm('ATENÇÃO: isso substituirá os produtos, categorias e movimentações atuais. O sistema criará um backup antes. Deseja continuar?')">
 

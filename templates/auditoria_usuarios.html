@@ -1,50 +1,157 @@
-
 {% extends "base.html" %}
 {% block conteudo %}
 
-<section class="user-audit-page">
+<section class="audit-official-page">
 
-    <div class="user-audit-hero">
+    <div class="audit-official-hero">
         <div>
-            <span class="dash-eyebrow">Rastreabilidade</span>
-            <h1>Auditoria por Usuário</h1>
-            <p>Acompanhe quem movimentou produtos, quantidades e últimas ações no sistema.</p>
+            <span class="dash-eyebrow">Auditoria operacional</span>
+            <h1>Relatório inteligente de auditoria</h1>
+            <p>Identifica pontos de atenção, falhas de processo e situações que precisam de conferência.</p>
         </div>
+        <button type="button" onclick="window.print()">Imprimir relatório</button>
     </div>
 
-    <section class="audit-summary-grid">
-        {% for item in resumo %}
-        <article class="audit-user-card">
-            <span>Usuário</span>
-            <h2>{{ item.usuario_nome }}</h2>
+    <form class="audit-filter-card" method="GET">
+        <div>
+            <label>Data inicial</label>
+            <input type="date" name="data_inicio" value="{{ data_inicio }}">
+        </div>
+        <div>
+            <label>Data final</label>
+            <input type="date" name="data_fim" value="{{ data_fim }}">
+        </div>
+        <button type="submit">Analisar período</button>
+        <a href="{{ url_for('auditoria_usuarios') }}">Últimos 30 dias</a>
+    </form>
 
-            <div class="audit-user-metrics">
-                <div>
-                    <small>Ações</small>
-                    <strong>{{ item.total_movimentacoes }}</strong>
+    <section class="audit-report-header">
+        <div>
+            <span>Documento de auditoria</span>
+            <h2>Período analisado: {{ data_inicio }} até {{ data_fim }}</h2>
+            <p>Gerado em {{ gerado_em.strftime('%d/%m/%Y %H:%M') }}. Os achados indicam pontos para investigação e melhoria, não conclusão automática de falha ou fraude.</p>
+        </div>
+        <strong>{{ achados|length }} achado(s)</strong>
+    </section>
+
+    <section class="audit-kpi-grid">
+        <article>
+            <span>Movimentações</span>
+            <strong>{{ indicadores.total or 0 }}</strong>
+            <small>Total no período</small>
+        </article>
+        <article>
+            <span>Retiradas</span>
+            <strong>{{ indicadores.retiradas or 0 }}</strong>
+            <small>Saídas e transferências de saída</small>
+        </article>
+        <article>
+            <span>Entradas</span>
+            <strong>{{ indicadores.entradas or 0 }}</strong>
+            <small>Entradas e transferências recebidas</small>
+        </article>
+        <article>
+            <span>Usuários</span>
+            <strong>{{ indicadores.usuarios or 0 }}</strong>
+            <small>Com ação registrada</small>
+        </article>
+    </section>
+
+    <section class="audit-risk-grid">
+        <article class="critico">
+            <span>Crítico</span>
+            <strong>{{ contagem_risco.critico }}</strong>
+        </article>
+        <article class="alto">
+            <span>Alto</span>
+            <strong>{{ contagem_risco.alto }}</strong>
+        </article>
+        <article class="medio">
+            <span>Médio</span>
+            <strong>{{ contagem_risco.medio }}</strong>
+        </article>
+        <article class="baixo">
+            <span>Baixo</span>
+            <strong>{{ contagem_risco.baixo }}</strong>
+        </article>
+    </section>
+
+    <section class="audit-section-card">
+        <div class="audit-section-head">
+            <div>
+                <span>Análise automática</span>
+                <h2>Achados para conferência</h2>
+            </div>
+        </div>
+
+        <div class="audit-findings-list">
+            {% for achado in achados %}
+            <article class="audit-finding {{ achado.risco }}">
+                <div class="audit-finding-top">
+                    <span>{{ achado.risco|title }}</span>
+                    <h3>{{ achado.titulo }}</h3>
                 </div>
-                <div>
-                    <small>Saídas</small>
-                    <strong>{{ item.total_saidas }}</strong>
+                <p>{{ achado.descricao }}</p>
+                <div class="audit-evidence">
+                    <strong>Evidência</strong>
+                    <span>{{ achado.evidencia }}</span>
                 </div>
+                <div class="audit-recommendation">
+                    <strong>Recomendação</strong>
+                    <span>{{ achado.recomendacao }}</span>
+                </div>
+            </article>
+            {% else %}
+            <div class="audit-empty">
+                Nenhum achado automático encontrado no período. Continue mantendo conferência de rotina.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="audit-two-columns">
+        <div class="audit-section-card">
+            <div class="audit-section-head">
                 <div>
-                    <small>Entradas</small>
-                    <strong>{{ item.total_entradas }}</strong>
+                    <span>Usuários</span>
+                    <h2>Resumo por operador</h2>
                 </div>
             </div>
 
-            <p>Última ação: {{ item.ultima_acao or '-' }}</p>
-        </article>
-        {% else %}
-        <div class="realtime-empty">Nenhuma movimentação com usuário registrada ainda.</div>
-        {% endfor %}
+            <div class="audit-user-list">
+                {% for item in resumo %}
+                <article>
+                    <strong>{{ item.usuario_nome }}</strong>
+                    <span>{{ item.total_movimentacoes }} ações | {{ item.total_saidas }} saídas | {{ item.total_entradas }} entradas</span>
+                    <small>Última ação: {{ item.ultima_acao or '-' }}</small>
+                </article>
+                {% else %}
+                <div class="audit-empty">Nenhuma movimentação com usuário registrada.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="audit-section-card">
+            <div class="audit-section-head">
+                <div>
+                    <span>Melhoria contínua</span>
+                    <h2>Dicas recomendadas</h2>
+                </div>
+            </div>
+
+            <div class="audit-tips-list">
+                {% for dica in recomendacoes %}
+                <div>{{ dica }}</div>
+                {% endfor %}
+            </div>
+        </div>
     </section>
 
-    <section class="audit-timeline-panel">
-        <div class="realtime-panel-head">
+    <section class="audit-section-card">
+        <div class="audit-section-head">
             <div>
-                <span>Últimas ações</span>
-                <h2>Histórico auditável</h2>
+                <span>Rastreabilidade</span>
+                <h2>Últimas ações do período</h2>
             </div>
         </div>
 
@@ -54,13 +161,28 @@
                 <div class="audit-avatar">{{ (mov.usuario_nome or 'S')[0] }}</div>
                 <div>
                     <strong>{{ mov.usuario_nome or 'Sistema' }}</strong>
-                    <span>{{ mov.tipo_movimentacao|replace('_', ' ')|title }} • {{ mov.produto_nome }}</span>
-                    <small>{{ mov.data_movimentacao }} • Qtd: {{ mov.quantidade }} • {{ mov.observacao or 'Sem observação' }}</small>
+                    <span>{{ mov.tipo_movimentacao|replace('_', ' ')|title }} - {{ mov.produto_nome }}</span>
+                    <small>{{ mov.data_movimentacao }} | Qtd: {{ mov.quantidade }} | {{ mov.motivo or mov.observacao or 'Sem observação' }}</small>
                 </div>
             </div>
             {% else %}
-            <div class="realtime-empty">Nenhuma ação recente encontrada.</div>
+            <div class="audit-empty">Nenhuma ação recente encontrada.</div>
             {% endfor %}
+        </div>
+    </section>
+
+    <section class="audit-signature-box">
+        <div>
+            <strong>Responsável pela análise</strong>
+            <span>________________________________________</span>
+        </div>
+        <div>
+            <strong>Ação tomada</strong>
+            <span>________________________________________</span>
+        </div>
+        <div>
+            <strong>Data e assinatura</strong>
+            <span>________________________________________</span>
         </div>
     </section>
 

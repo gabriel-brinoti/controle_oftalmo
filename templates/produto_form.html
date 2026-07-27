@@ -22,10 +22,4 @@
     <option value="unidade" {% if unidade_atual == 'unidade' %}selected{% endif %}>Unidade</option>
     <option value="caixa" {% if unidade_atual == 'caixa' %}selected{% endif %}>Caixa</option>
     <option value="pacote" {% if unidade_atual == 'pacote' %}selected{% endif %}>Pacote</option>
-    <option value="frasco" {% if unidade_atual == 'frasco' %}selected{% endif %}>Frasco</option>
-    <option value="ampola" {% if unidade_atual == 'ampola' %}selected{% endif %}>Ampola</option>
-    <option value="ml" {% if unidade_atual == 'ml' %}selected{% endif %}>ML</option>
 </select>
-
-<label>Observacoes</label>
-<textarea name="observacoes">{{ form.get('observacoes') if form else (produto.observacoes if produto and produto.observacoes else '') }}</textarea>

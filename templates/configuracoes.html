@@ -28,7 +28,7 @@
         <div class="security-summary-card success">
             <span>Banco de dados</span>
             <strong>PostgreSQL</strong>
-            <small>Supabase conectado</small>
+            <small>Neon conectado</small>
         </div>
 
         <div class="security-summary-card info">
@@ -53,12 +53,83 @@
 
     <section class="security-main-grid">
 
+        <div class="security-panel">
+
+            <div class="panel-heading">
+                <div>
+                    <span>Regras do sistema</span>
+                    <h2>Vencimentos e popups</h2>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('salvar_regras_sistema') }}" class="security-form">
+                <div>
+                    <label>Dias de aviso para Almoxarifado/Farmácia</label>
+                    <input type="number" name="dias_alerta_estoque" min="1" max="180" value="{{ config_alerta.dias_alerta_estoque or 15 }}">
+                    <small>Regra usada para avisar lotes próximos do vencimento nesses estoques.</small>
+                </div>
+
+                <div>
+                    <label>Dias de aviso para Carrinho de Urgência</label>
+                    <input type="number" name="dias_alerta_carrinho" min="1" max="180" value="{{ config_alerta.dias_alerta_carrinho or 30 }}">
+                    <small>O carrinho costuma usar prazo maior porque quase não movimenta.</small>
+                </div>
+
+                <label class="checkbox-user">
+                    <input type="checkbox" name="popup_estoque" {% if config_alerta.popup_estoque %}checked{% endif %}>
+                    Mostrar popup na tela de estoque
+                </label>
+
+                <label class="checkbox-user">
+                    <input type="checkbox" name="popup_dashboard" {% if config_alerta.popup_dashboard %}checked{% endif %}>
+                    Mostrar popup no dashboard do admin
+                </label>
+
+                <button type="submit">Salvar regras do sistema</button>
+                <small>Essas opções controlam avisos internos. Envios por WhatsApp/e-mail continuam na aba Alertas.</small>
+            </form>
+
+        </div>
+
+        <div class="security-panel">
+
+            <div class="panel-heading">
+                <div>
+                    <span>Separação das funções</span>
+                    <h2>Como usar</h2>
+                </div>
+            </div>
+
+            <div class="security-checklist">
+                <div class="check-item info">
+                    <div class="check-icon">i</div>
+                    <div>
+                        <strong>Configurações</strong>
+                        <span>Controla regras internas do sistema, como popups e prazos de vencimento.</span>
+                    </div>
+                </div>
+
+                <div class="check-item info">
+                    <div class="check-icon">i</div>
+                    <div>
+                        <strong>Alertas</strong>
+                        <span>Fica reservado para envios externos, como WhatsApp, e-mail e histórico de notificações.</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </section>
+
+    <section class="security-main-grid">
+
         <div class="security-panel database-panel">
 
             <div class="panel-heading">
                 <div>
                     <span>Infraestrutura</span>
-                    <h2>Banco Supabase/PostgreSQL</h2>
+                    <h2>Banco Neon/PostgreSQL</h2>
                 </div>
             </div>
 
@@ -68,11 +139,11 @@
                 <div>
                     <h3>Dados protegidos em banco online</h3>
                     <p>
-                        O sistema utiliza PostgreSQL via Supabase. Os dados não ficam mais em um arquivo local
+                        O sistema utiliza PostgreSQL via Neon. Os dados não ficam mais em um arquivo local
                         <strong>database.db</strong>.
                     </p>
                     <p>
-                        Para backup operacional, utilize os relatórios em Excel/PDF. Backup completo pode ser feito pelo painel do Supabase.
+                        Para backup operacional, use o backup JSON local e os snapshots no painel do Neon.
                     </p>
                 </div>
             </div>
@@ -87,7 +158,7 @@
                 <div class="control-card">
                     <span>Backup</span>
                     <strong>Disponível</strong>
-                    <small>Via Supabase/relatórios.</small>
+                    <small>Via Neon Snapshot e JSON local.</small>
                 </div>
             </div>
 
@@ -153,7 +224,7 @@
                     <div class="check-icon">✓</div>
                     <div>
                         <strong>Banco online</strong>
-                        <span>Dados salvos em PostgreSQL/Supabase.</span>
+                        <span>Dados salvos em PostgreSQL/Neon.</span>
                     </div>
                 </div>
 

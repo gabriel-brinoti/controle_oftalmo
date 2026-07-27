@@ -9,8 +9,8 @@ PAINEL BACKUP
 RESET SISTEMA
 /painel_master_reset_7319
 
-TESTE BACKUP SUPABASE
-/backup/testar_supabase
+TESTE BACKUP NEON
+/backup/testar_neon
 
 BACKUP MANUAL
 /backup/manual
