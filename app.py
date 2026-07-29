@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import os
 from dotenv import load_dotenv
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -35,11 +36,15 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+DB_POOL_MIN = int(os.environ.get("DB_POOL_MIN", "1"))
+DB_POOL_MAX = int(os.environ.get("DB_POOL_MAX", "5"))
+DB_CONNECT_TIMEOUT = int(os.environ.get("DB_CONNECT_TIMEOUT", "10"))
+_db_pool = None
 ALERTA_DIAS = 15
 ESTOQUES = {
     "almoxarifado": "Almoxarifado",
-    "farmacia_satelite": "Farmácia Satélite",
-    "carrinho_urgencia": "Carrinho de Urgência",
+    "farmacia_satelite": "FarmÃ¡cia SatÃ©lite",
+    "carrinho_urgencia": "Carrinho de UrgÃªncia",
 }
 
 
@@ -55,15 +60,15 @@ def normalizar_texto_busca(texto):
 
 
 def sql_sem_acento(campo):
-    origem = "áàãâäéèêëíìîïóòõôöúùûüçñ"
+    origem = "Ã¡Ã Ã£Ã¢Ã¤Ã©Ã¨ÃªÃ«Ã­Ã¬Ã®Ã¯Ã³Ã²ÃµÃ´Ã¶ÃºÃ¹Ã»Ã¼Ã§Ã±"
     destino = "aaaaaeeeeiiiiooooouuuucn"
     return f"translate(lower(COALESCE({campo}, '')), '{origem}', '{destino}')"
 
 
-def conectar():
+def conectar_direto():
     if not DATABASE_URL:
         raise RuntimeError(
-            "DATABASE_URL não configurada. Configure no .env local ou nas variáveis do Render."
+            "DATABASE_URL nÃ£o configurada. Configure no .env local ou nas variÃ¡veis do Render."
         )
 
     return psycopg2.connect(
@@ -73,6 +78,67 @@ def conectar():
     )
 
 
+
+class ConexaoPool:
+    def __init__(self, conexao):
+        self._conexao = conexao
+        self._devolvida = False
+
+    def __getattr__(self, nome):
+        return getattr(self._conexao, nome)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def close(self):
+        global _db_pool
+        if self._devolvida:
+            return
+
+        self._devolvida = True
+        conexao = self._conexao
+        self._conexao = None
+
+        if _db_pool and conexao and not conexao.closed:
+            try:
+                if not conexao.autocommit:
+                    conexao.rollback()
+            except psycopg2.Error:
+                _db_pool.putconn(conexao, close=True)
+                return
+            _db_pool.putconn(conexao)
+        elif conexao and not conexao.closed:
+            conexao.close()
+
+
+def obter_pool_conexoes():
+    global _db_pool
+    if _db_pool is None:
+        if not DATABASE_URL:
+            raise RuntimeError(
+                "DATABASE_URL nao configurada. Configure no .env local ou nas variaveis do Render."
+            )
+
+        _db_pool = pool.ThreadedConnectionPool(
+            DB_POOL_MIN,
+            DB_POOL_MAX,
+            DATABASE_URL,
+            cursor_factory=RealDictCursor,
+            connect_timeout=DB_CONNECT_TIMEOUT,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
+            application_name="controle_oftalmo",
+        )
+    return _db_pool
+
+
+def conectar():
+    return ConexaoPool(obter_pool_conexoes().getconn())
 def criar_banco():
     conn = conectar()
     cursor = conn.cursor()
@@ -131,7 +197,7 @@ def criar_banco():
 
     cursor.execute("""
         INSERT INTO produto_codigos (produto_id, codigo_barras, descricao, ativo)
-        SELECT id, TRIM(codigo_barras), 'Código principal importado', TRUE
+        SELECT id, TRIM(codigo_barras), 'CÃ³digo principal importado', TRUE
         FROM produtos
         WHERE COALESCE(TRIM(codigo_barras), '') <> ''
         ON CONFLICT (codigo_barras) DO NOTHING
@@ -289,13 +355,13 @@ def criar_banco():
             INSERT INTO licencas (empresa, plano, status, data_vencimento, dias_carencia, chave_licenca, observacoes)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
-            "Hospital Oftalmológico",
+            "Hospital OftalmolÃ³gico",
             "Premium Mensal",
             "ativo",
             data_vencimento,
             5,
             "HO-PREMIUM-MENSAL-001",
-            "Licença inicial gerada automaticamente."
+            "LicenÃ§a inicial gerada automaticamente."
         ))
 
     cursor.execute("ALTER TABLE configuracoes_alerta ADD COLUMN IF NOT EXISTS intervalo_minutos INTEGER NOT NULL DEFAULT 720")
@@ -432,7 +498,7 @@ def admin_obrigatorio(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if session.get("perfil", "admin") != "admin":
-            flash("Acesso restrito à Sala Central.", "erro")
+            flash("Acesso restrito Ã  Sala Central.", "erro")
             return redirect(url_for("produtos"))
         return func(*args, **kwargs)
     return wrapper
@@ -442,7 +508,7 @@ def estoque_obrigatorio(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if session.get("perfil") not in ["admin", "estoque"]:
-            flash("Acesso não autorizado.", "erro")
+            flash("Acesso nÃ£o autorizado.", "erro")
             return redirect(url_for("login"))
         return func(*args, **kwargs)
     return wrapper
@@ -474,7 +540,7 @@ def situacao_licenca():
             "situacao": "bloqueada",
             "licenca": None,
             "dias_restantes": 0,
-            "mensagem": "Licença não encontrada."
+            "mensagem": "LicenÃ§a nÃ£o encontrada."
         }
 
     hoje = date.today()
@@ -486,7 +552,7 @@ def situacao_licenca():
             "situacao": "bloqueada",
             "licenca": licenca,
             "dias_restantes": 0,
-            "mensagem": "Licença bloqueada pelo suporte."
+            "mensagem": "LicenÃ§a bloqueada pelo suporte."
         }
 
     dias_restantes = (data_vencimento - hoje).days
@@ -496,7 +562,7 @@ def situacao_licenca():
             "situacao": "ativa",
             "licenca": licenca,
             "dias_restantes": dias_restantes,
-            "mensagem": "Licença ativa."
+            "mensagem": "LicenÃ§a ativa."
         }
 
     dias_vencida = (hoje - data_vencimento).days
@@ -506,14 +572,14 @@ def situacao_licenca():
             "situacao": "vencida_limitada",
             "licenca": licenca,
             "dias_restantes": dias_carencia - dias_vencida,
-            "mensagem": "Licença vencida. Sistema em modo consulta."
+            "mensagem": "LicenÃ§a vencida. Sistema em modo consulta."
         }
 
     return {
         "situacao": "bloqueada",
         "licenca": licenca,
         "dias_restantes": 0,
-        "mensagem": "Licença vencida e fora do período de carência."
+        "mensagem": "LicenÃ§a vencida e fora do perÃ­odo de carÃªncia."
     }
 
 
@@ -538,7 +604,7 @@ def alteracao_permitida(func):
             return redirect(url_for("licenca_bloqueada"))
 
         if info["situacao"] == "vencida_limitada":
-            flash("Licença vencida. O sistema está em modo consulta e não permite alterações.", "erro")
+            flash("LicenÃ§a vencida. O sistema estÃ¡ em modo consulta e nÃ£o permite alteraÃ§Ãµes.", "erro")
             return redirect(request.referrer or url_for("dashboard"))
 
         return func(*args, **kwargs)
@@ -633,9 +699,9 @@ def calcular_status(produto):
         dias_aberto = (vencimento_apos_aberto - hoje).days
 
         if dias_aberto < 0:
-            alertas.append({"tipo": "danger", "prioridade": 1, "texto": "Vencido após abertura"})
+            alertas.append({"tipo": "danger", "prioridade": 1, "texto": "Vencido apÃ³s abertura"})
         elif dias_aberto <= dias_alerta:
-            alertas.append({"tipo": "warning", "prioridade": 3, "texto": f"Vence após aberto em {dias_aberto} dia(s)"})
+            alertas.append({"tipo": "warning", "prioridade": 3, "texto": f"Vence apÃ³s aberto em {dias_aberto} dia(s)"})
 
     quantidade = produto["quantidade_atual"]
     limite = produto["limite_alerta"]
@@ -692,7 +758,7 @@ def criar_snapshot_neon():
     config = obter_configuracao_backup_neon()
 
     if not config["api_key"] or not config["project_id"] or not config["branch_id"]:
-        return False, "Snapshot Neon não configurado. Configure NEON_API_KEY, NEON_PROJECT_ID e NEON_BRANCH_ID no Render."
+        return False, "Snapshot Neon nÃ£o configurado. Configure NEON_API_KEY, NEON_PROJECT_ID e NEON_BRANCH_ID no Render."
 
     agora = datetime.utcnow()
     nome_snapshot = agora.strftime("controle-oftalmo-auto-%Y-%m-%d-%Hh%Mm")
@@ -740,7 +806,7 @@ def gerar_backup_sistema():
 
     backup = {
         "gerado_em": datetime.now().isoformat(),
-        "sistema": "Controle Oftalmológico Premium",
+        "sistema": "Controle OftalmolÃ³gico Premium",
         "dados": {}
     }
 
@@ -767,7 +833,7 @@ def gerar_backup_sistema():
         json.dump(backup, arquivo, ensure_ascii=False, indent=4)
 
     upload_ok = False
-    upload_mensagem = "Snapshot Neon não executado."
+    upload_mensagem = "Snapshot Neon nÃ£o executado."
 
     try:
         upload_ok, upload_mensagem = criar_snapshot_neon()
@@ -795,7 +861,7 @@ def limpar_backups_antigos(limite=30):
             pass
 
 def iniciar_backup_automatico():
-    # Evita criar múltiplos agendadores no Flask debug/reloader
+    # Evita criar mÃºltiplos agendadores no Flask debug/reloader
     if os.environ.get("WERKZEUG_RUN_MAIN") == "false":
         return
 
@@ -869,12 +935,12 @@ def baixar_backup_local(nome_arquivo):
     garantir_pasta_backup()
     nome_seguro = os.path.basename(nome_arquivo)
     if not nome_seguro.endswith(".json"):
-        flash("Arquivo de backup inválido.", "erro")
+        flash("Arquivo de backup invÃ¡lido.", "erro")
         return redirect(url_for("painel_backup"))
 
     caminho = os.path.join(BACKUP_DIR, nome_seguro)
     if not os.path.exists(caminho):
-        flash("Arquivo de backup não encontrado.", "erro")
+        flash("Arquivo de backup nÃ£o encontrado.", "erro")
         return redirect(url_for("painel_backup"))
 
     return send_file(
@@ -1029,7 +1095,7 @@ def login():
                 return redirect(url_for("dashboard"))
             return redirect(url_for("produtos"))
 
-        flash("Usuário ou senha inválidos.", "erro")
+        flash("UsuÃ¡rio ou senha invÃ¡lidos.", "erro")
 
     return render_template("login.html")
 
@@ -1068,7 +1134,7 @@ def renovar_licenca():
     observacoes = request.form.get("observacoes", "").strip()
 
     if not data_vencimento:
-        flash("Informe a data de vencimento da licença.", "erro")
+        flash("Informe a data de vencimento da licenÃ§a.", "erro")
         return redirect(url_for("licenciamento"))
 
     conn = conectar()
@@ -1116,7 +1182,7 @@ def renovar_licenca():
     conn.commit()
     conn.close()
 
-    flash("Licença renovada com sucesso.", "sucesso")
+    flash("LicenÃ§a renovada com sucesso.", "sucesso")
     return redirect(url_for("licenciamento"))
 
 
@@ -1130,7 +1196,7 @@ def bloquear_licenca():
     conn.commit()
     conn.close()
 
-    flash("Licença bloqueada.", "sucesso")
+    flash("LicenÃ§a bloqueada.", "sucesso")
     return redirect(url_for("licenciamento"))
 
 
@@ -1144,7 +1210,7 @@ def ativar_licenca():
     conn.commit()
     conn.close()
 
-    flash("Licença ativada.", "sucesso")
+    flash("LicenÃ§a ativada.", "sucesso")
     return redirect(url_for("licenciamento"))
 
 
@@ -1243,12 +1309,12 @@ def dashboard():
         produtos_status.append({"produto": produto, "status": status})
         texto = status["texto"].lower()
 
-        if "vencido após abertura" in texto:
+        if "vencido apÃ³s abertura" in texto:
             contadores["vencidos_abertos"] += 1
-            alertas_inteligentes.append(f"{produto['nome']} está vencido após abertura.")
+            alertas_inteligentes.append(f"{produto['nome']} estÃ¡ vencido apÃ³s abertura.")
         elif "vencido" in texto:
             contadores["vencidos"] += 1
-            alertas_inteligentes.append(f"{produto['nome']} está vencido pela validade original.")
+            alertas_inteligentes.append(f"{produto['nome']} estÃ¡ vencido pela validade original.")
 
         if "vence" in texto:
             contadores["proximos"] += 1
@@ -1256,12 +1322,12 @@ def dashboard():
                 contadores["farmacia_vencendo"] += 1
             else:
                 contadores["almox_vencendo"] += 1
-            alertas_inteligentes.append(f"{produto['nome']} precisa de atenção: {status['texto']}.")
+            alertas_inteligentes.append(f"{produto['nome']} precisa de atenÃ§Ã£o: {status['texto']}.")
 
         if produto["quantidade_atual"] == 0:
             contadores["estoque_zerado"] += 1
             estoque_zerado += 1
-            alertas_inteligentes.append(f"{produto['nome']} está com estoque zerado.")
+            alertas_inteligentes.append(f"{produto['nome']} estÃ¡ com estoque zerado.")
         elif produto["quantidade_atual"] <= produto["limite_alerta"]:
             contadores["estoque_baixo"] += 1
             if produto["tipo_estoque"] == "farmacia_satelite":
@@ -1269,7 +1335,7 @@ def dashboard():
             else:
                 contadores["almox_baixo"] += 1
             estoque_baixo += 1
-            alertas_inteligentes.append(f"{produto['nome']} está abaixo do limite de estoque.")
+            alertas_inteligentes.append(f"{produto['nome']} estÃ¡ abaixo do limite de estoque.")
         else:
             estoque_ok += 1
 
@@ -1288,7 +1354,7 @@ def dashboard():
             })
 
     grafico_movimentacoes = {
-        "labels": ["Entradas", "Saídas"],
+        "labels": ["Entradas", "SaÃ­das"],
         "dados": [int(contadores["entradas_mes"]), int(contadores["saidas_mes"])]
     }
     grafico_estoque = {"labels": ["OK", "Baixo", "Zerado"], "dados": [estoque_ok, estoque_baixo, estoque_zerado]}
@@ -1385,7 +1451,7 @@ def nova_categoria():
         descricao = request.form.get("descricao", "").strip()
 
         if not nome:
-            flash("O nome da categoria é obrigatório.", "erro")
+            flash("O nome da categoria Ã© obrigatÃ³rio.", "erro")
             return render_template("nova_categoria.html")
 
         conn = conectar()
@@ -1397,7 +1463,7 @@ def nova_categoria():
             return redirect(url_for("categorias"))
         except psycopg2.IntegrityError:
             conn.rollback()
-            flash("Essa categoria já existe.", "erro")
+            flash("Essa categoria jÃ¡ existe.", "erro")
         finally:
             conn.close()
 
@@ -1417,7 +1483,7 @@ def editar_categoria(id):
         descricao = request.form.get("descricao", "").strip()
 
         if not nome:
-            flash("O nome da categoria é obrigatório.", "erro")
+            flash("O nome da categoria Ã© obrigatÃ³rio.", "erro")
         else:
             try:
                 cursor.execute("UPDATE categorias SET nome = %s, descricao = %s WHERE id = %s", (nome, descricao, id))
@@ -1427,14 +1493,14 @@ def editar_categoria(id):
                 return redirect(url_for("categorias"))
             except psycopg2.IntegrityError:
                 conn.rollback()
-                flash("Essa categoria já existe.", "erro")
+                flash("Essa categoria jÃ¡ existe.", "erro")
 
     cursor.execute("SELECT * FROM categorias WHERE id = %s", (id,))
     categoria = cursor.fetchone()
     conn.close()
 
     if not categoria:
-        flash("Categoria não encontrada.", "erro")
+        flash("Categoria nÃ£o encontrada.", "erro")
         return redirect(url_for("categorias"))
 
     return render_template("editar_categoria.html", categoria=categoria)
@@ -1451,11 +1517,11 @@ def excluir_categoria(id):
     total = cursor.fetchone()["total"]
 
     if total > 0:
-        flash("Não é possível excluir uma categoria com produtos vinculados.", "erro")
+        flash("NÃ£o Ã© possÃ­vel excluir uma categoria com produtos vinculados.", "erro")
     else:
         cursor.execute("DELETE FROM categorias WHERE id = %s", (id,))
         conn.commit()
-        flash("Categoria excluída com sucesso.", "sucesso")
+        flash("Categoria excluÃ­da com sucesso.", "sucesso")
 
     conn.close()
     return redirect(url_for("categorias"))
@@ -1940,7 +2006,7 @@ def atualizar_quantidade_lote(cursor, lote_id, quantidade_atual):
     """, (quantidade_atual, ativo, lote_id))
 
 
-def registrar_codigo_produto(cursor, produto_id, codigo_barras, descricao="Código vinculado ao produto"):
+def registrar_codigo_produto(cursor, produto_id, codigo_barras, descricao="CÃ³digo vinculado ao produto"):
     codigo = str(codigo_barras or "").strip()
     if not codigo:
         return True, None
@@ -1954,7 +2020,7 @@ def registrar_codigo_produto(cursor, produto_id, codigo_barras, descricao="Códi
     existente = cursor.fetchone()
 
     if existente and existente["produto_id"] != int(produto_id):
-        return False, "Este código de barras já está vinculado a outro produto."
+        return False, "Este cÃ³digo de barras jÃ¡ estÃ¡ vinculado a outro produto."
 
     cursor.execute("""
         INSERT INTO produto_codigos (produto_id, codigo_barras, descricao, ativo)
@@ -2070,11 +2136,11 @@ def retirar_lote(lote_id):
     motivo = (
         request.form.get("motivo", "").strip()
         or request.form.get("observacao", "").strip()
-        or "Saída de lote"
+        or "SaÃ­da de lote"
     )
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -2083,13 +2149,13 @@ def retirar_lote(lote_id):
 
     if not lote:
         conn.close()
-        flash("Lote não encontrado.", "erro")
+        flash("Lote nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     quantidade_anterior = lote["quantidade_atual"]
     if quantidade > quantidade_anterior:
         conn.close()
-        flash("Não é possível retirar mais do que a quantidade atual do lote.", "erro")
+        flash("NÃ£o Ã© possÃ­vel retirar mais do que a quantidade atual do lote.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     quantidade_posterior = quantidade_anterior - quantidade
@@ -2108,7 +2174,7 @@ def retirar_lote(lote_id):
     conn.commit()
     conn.close()
 
-    flash("Saída registrada no lote.", "sucesso")
+    flash("SaÃ­da registrada no lote.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -2125,11 +2191,11 @@ def repor_lote(lote_id):
     motivo = (
         request.form.get("motivo", "").strip()
         or request.form.get("observacao", "").strip()
-        or "Reposição de lote"
+        or "ReposiÃ§Ã£o de lote"
     )
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -2138,7 +2204,7 @@ def repor_lote(lote_id):
 
     if not lote:
         conn.close()
-        flash("Lote não encontrado.", "erro")
+        flash("Lote nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     quantidade_anterior = lote["quantidade_atual"]
@@ -2158,7 +2224,7 @@ def repor_lote(lote_id):
     conn.commit()
     conn.close()
 
-    flash("Reposição registrada no lote.", "sucesso")
+    flash("ReposiÃ§Ã£o registrada no lote.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -2172,10 +2238,10 @@ def devolver_lote(lote_id):
     except ValueError:
         quantidade = 0
 
-    motivo = "Devolução operacional"
+    motivo = "DevoluÃ§Ã£o operacional"
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -2184,7 +2250,7 @@ def devolver_lote(lote_id):
 
     if not lote:
         conn.close()
-        flash("Lote não encontrado.", "erro")
+        flash("Lote nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     quantidade_anterior = lote["quantidade_atual"]
@@ -2204,7 +2270,7 @@ def devolver_lote(lote_id):
     conn.commit()
     conn.close()
 
-    flash("Devolução registrada no lote.", "sucesso")
+    flash("DevoluÃ§Ã£o registrada no lote.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -2280,7 +2346,7 @@ def editar_lote(lote_id):
 
     if not lote:
         conn.close()
-        flash("Lote não encontrado.", "erro")
+        flash("Lote nÃ£o encontrado.", "erro")
         return redirect(url_for("produtos"))
 
     if request.method == "POST":
@@ -2301,11 +2367,11 @@ def editar_lote(lote_id):
         if not data_vencimento:
             erros.append("Informe a validade.")
         if quantidade_atual < 0:
-            erros.append("Quantidade atual não pode ser negativa.")
+            erros.append("Quantidade atual nÃ£o pode ser negativa.")
         if tipo_unidade_entrada not in ["unidade", "caixa", "pacote"]:
-            erros.append("Tipo de entrada inválido.")
+            erros.append("Tipo de entrada invÃ¡lido.")
         if quantidade_embalagens < 0:
-            erros.append("Quantidade de caixas/pacotes/unidades não pode ser negativa.")
+            erros.append("Quantidade de caixas/pacotes/unidades nÃ£o pode ser negativa.")
         if unidades_por_embalagem <= 0:
             erros.append("Quanto vem em cada caixa/pacote deve ser maior que zero.")
 
@@ -2359,14 +2425,14 @@ def transferir_lote(lote_id):
     motivo = (
         request.form.get("motivo", "").strip()
         or request.form.get("observacao", "").strip()
-        or f"Transferência para {nome_tipo_estoque(destino)}"
+        or f"TransferÃªncia para {nome_tipo_estoque(destino)}"
     )
 
     if destino not in ESTOQUES:
-        flash("Estoque de destino inválido.", "erro")
+        flash("Estoque de destino invÃ¡lido.", "erro")
         return redirect(request.referrer or url_for("produtos"))
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -2375,15 +2441,15 @@ def transferir_lote(lote_id):
 
     if not lote:
         conn.close()
-        flash("Lote não encontrado.", "erro")
+        flash("Lote nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
     if not lote_permite_transferencia_operacional(lote):
         conn.close()
-        flash("O Carrinho de Urgência só pode transferir lote válido quando estiver perto do vencimento.", "erro")
+        flash("O Carrinho de UrgÃªncia sÃ³ pode transferir lote vÃ¡lido quando estiver perto do vencimento.", "erro")
         return redirect(request.referrer or url_for("produtos"))
     if destino == "almoxarifado":
         conn.close()
-        flash("O Almoxarifado é estoque de origem. Não envie material de volta para ele por transferência operacional.", "erro")
+        flash("O Almoxarifado Ã© estoque de origem. NÃ£o envie material de volta para ele por transferÃªncia operacional.", "erro")
         return redirect(request.referrer or url_for("produtos"))
     if lote["tipo_estoque"] == destino:
         conn.close()
@@ -2391,7 +2457,7 @@ def transferir_lote(lote_id):
         return redirect(request.referrer or url_for("produtos"))
     if quantidade > lote["quantidade_atual"]:
         conn.close()
-        flash("Não é possível transferir mais do que a quantidade atual do lote.", "erro")
+        flash("NÃ£o Ã© possÃ­vel transferir mais do que a quantidade atual do lote.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     origem_anterior = lote["quantidade_atual"]
@@ -2474,7 +2540,7 @@ def transferir_lote(lote_id):
     conn.commit()
     conn.close()
 
-    flash("Transferência de lote realizada com rastreabilidade.", "sucesso")
+    flash("TransferÃªncia de lote realizada com rastreabilidade.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -2723,7 +2789,7 @@ def nova_entrada_produto():
         if not produto_id:
             erros.append("Selecione o produto.")
         if tipo_estoque not in ESTOQUES:
-            erros.append("Estoque inválido.")
+            erros.append("Estoque invÃ¡lido.")
         if not data_vencimento:
             erros.append("Informe a validade do lote.")
         if quantidade <= 0:
@@ -2731,13 +2797,13 @@ def nova_entrada_produto():
         if quantidade_embalagens <= 0:
             erros.append("Quantidade de caixas/pacotes/unidades deve ser maior que zero.")
         if tipo_unidade_entrada not in ["unidade", "caixa", "pacote"]:
-            erros.append("Tipo de entrada inválido.")
+            erros.append("Tipo de entrada invÃ¡lido.")
         if unidades_por_embalagem <= 0:
             erros.append("Quantidade por caixa/pacote deve ser maior que zero.")
         if estoque_padrao < 0:
-            erros.append("Estoque padrão não pode ser negativo.")
+            erros.append("Estoque padrÃ£o nÃ£o pode ser negativo.")
         if limite_alerta < 0:
-            erros.append("Limite de alerta não pode ser negativo.")
+            erros.append("Limite de alerta nÃ£o pode ser negativo.")
 
         if erros:
             for erro in erros:
@@ -2885,11 +2951,11 @@ def produto_aberto():
         erros = []
         abertura = converter_data(data_abertura)
         if not lote_id:
-            erros.append("Selecione o lote que será aberto.")
+            erros.append("Selecione o lote que serÃ¡ aberto.")
         if not abertura:
             erros.append("Informe a data de abertura.")
         elif abertura > date.today():
-            erros.append("Data de abertura não pode ser futura.")
+            erros.append("Data de abertura nÃ£o pode ser futura.")
         validade_dias = None
         if validade_apos_aberto_dias:
             try:
@@ -2908,11 +2974,11 @@ def produto_aberto():
         lote = buscar_lote_para_movimentacao(cursor, lote_id)
         if not lote:
             conn.close()
-            flash("Lote não encontrado.", "erro")
+            flash("Lote nÃ£o encontrado.", "erro")
             return redirect(url_for("produto_aberto"))
         if lote["quantidade_atual"] <= 0:
             conn.close()
-            flash("Lote sem quantidade disponível para abertura.", "erro")
+            flash("Lote sem quantidade disponÃ­vel para abertura.", "erro")
             return redirect(url_for("produto_aberto"))
 
         quantidade_anterior = lote["quantidade_atual"]
@@ -3030,7 +3096,7 @@ def produto_aberto():
         cursor.execute(query, params)
         lotes = cursor.fetchall()
         if not lotes:
-            flash("Nenhum lote disponível encontrado para esse produto nesse estoque.", "erro")
+            flash("Nenhum lote disponÃ­vel encontrado para esse produto nesse estoque.", "erro")
 
     conn.close()
     return render_template(
@@ -3086,7 +3152,7 @@ def baixar_estoque(id):
     observacao = request.form.get("observacao", "").strip()
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -3096,12 +3162,12 @@ def baixar_estoque(id):
 
     if not produto:
         conn.close()
-        flash("Produto não encontrado.", "erro")
+        flash("Produto nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if produto_esta_vencido(produto):
         conn.close()
-        flash("Produto vencido bloqueado para uso. Faça descarte ou ajuste administrativo.", "erro")
+        flash("Produto vencido bloqueado para uso. FaÃ§a descarte ou ajuste administrativo.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
 
@@ -3109,7 +3175,7 @@ def baixar_estoque(id):
 
     if quantidade > estoque_anterior:
         conn.close()
-        flash("Não é possível baixar mais do que o estoque atual.", "erro")
+        flash("NÃ£o Ã© possÃ­vel baixar mais do que o estoque atual.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     estoque_atual = estoque_anterior - quantidade
@@ -3120,7 +3186,7 @@ def baixar_estoque(id):
     conn.commit()
     conn.close()
 
-    flash("Estoque baixado e histórico registrado com sucesso.", "sucesso")
+    flash("Estoque baixado e histÃ³rico registrado com sucesso.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -3137,7 +3203,7 @@ def repor_estoque(id):
     observacao = request.form.get("observacao", "").strip()
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -3147,7 +3213,7 @@ def repor_estoque(id):
 
     if not produto:
         conn.close()
-        flash("Produto não encontrado.", "erro")
+        flash("Produto nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     estoque_anterior = produto["quantidade_atual"]
@@ -3159,7 +3225,7 @@ def repor_estoque(id):
     conn.commit()
     conn.close()
 
-    flash("Estoque reposto e histórico registrado com sucesso.", "sucesso")
+    flash("Estoque reposto e histÃ³rico registrado com sucesso.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -3169,9 +3235,9 @@ def validar_produto(form):
     categoria_id = form.get("categoria_id", "").strip()
 
     if not nome:
-        erros.append("Nome do produto é obrigatório.")
+        erros.append("Nome do produto Ã© obrigatÃ³rio.")
     if not categoria_id:
-        erros.append("Categoria é obrigatória.")
+        erros.append("Categoria Ã© obrigatÃ³ria.")
 
     return erros
 
@@ -3189,7 +3255,7 @@ def devolver_estoque(id):
     observacao = request.form.get("observacao", "").strip()
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -3199,7 +3265,7 @@ def devolver_estoque(id):
 
     if not produto:
         conn.close()
-        flash("Produto não encontrado.", "erro")
+        flash("Produto nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     estoque_anterior = produto["quantidade_atual"]
@@ -3211,7 +3277,7 @@ def devolver_estoque(id):
     conn.commit()
     conn.close()
 
-    flash("Produto devolvido ao estoque e histórico registrado com sucesso.", "sucesso")
+    flash("Produto devolvido ao estoque e histÃ³rico registrado com sucesso.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -3230,11 +3296,11 @@ def transferir_estoque(id):
     destino = request.form.get("destino", "").strip()
 
     if destino not in ["almoxarifado", "farmacia_satelite"]:
-        flash("Estoque de destino inválido.", "erro")
+        flash("Estoque de destino invÃ¡lido.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if quantidade <= 0:
-        flash("Quantidade inválida.", "erro")
+        flash("Quantidade invÃ¡lida.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     conn = conectar()
@@ -3245,12 +3311,12 @@ def transferir_estoque(id):
 
     if not origem:
         conn.close()
-        flash("Produto de origem não encontrado.", "erro")
+        flash("Produto de origem nÃ£o encontrado.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     if produto_esta_vencido(origem):
         conn.close()
-        flash("Produto vencido bloqueado para transferência. Faça descarte ou ajuste administrativo.", "erro")
+        flash("Produto vencido bloqueado para transferÃªncia. FaÃ§a descarte ou ajuste administrativo.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
 
@@ -3261,7 +3327,7 @@ def transferir_estoque(id):
 
     if quantidade > origem["quantidade_atual"]:
         conn.close()
-        flash("Não é possível transferir mais do que o estoque atual.", "erro")
+        flash("NÃ£o Ã© possÃ­vel transferir mais do que o estoque atual.", "erro")
         return redirect(request.referrer or url_for("produtos"))
 
     cursor.execute("""
@@ -3333,7 +3399,7 @@ def transferir_estoque(id):
 
         produto_destino_id = cursor.fetchone()["id"]
 
-    descricao = observacao or f"Transferência para {nome_tipo_estoque(destino)}"
+    descricao = observacao or f"TransferÃªncia para {nome_tipo_estoque(destino)}"
 
     registrar_movimentacao(
         cursor,
@@ -3366,7 +3432,7 @@ def transferir_estoque(id):
     conn.commit()
     conn.close()
 
-    flash("Transferência realizada com sucesso.", "sucesso")
+    flash("TransferÃªncia realizada com sucesso.", "sucesso")
     return redirect(request.referrer or url_for("produtos"))
 
 
@@ -3409,7 +3475,7 @@ def novo_produto():
         quantidade = quantidade_embalagens * unidades_por_embalagem
 
         if tipo_estoque not in ESTOQUES:
-            erros.append("Estoque inválido.")
+            erros.append("Estoque invÃ¡lido.")
         if not data_vencimento:
             erros.append("Informe a validade do lote.")
         if quantidade <= 0:
@@ -3417,13 +3483,13 @@ def novo_produto():
         if quantidade_embalagens <= 0:
             erros.append("Quantidade de caixas/pacotes/unidades deve ser maior que zero.")
         if tipo_unidade_entrada not in ["unidade", "caixa", "pacote"]:
-            erros.append("Tipo de entrada inválido.")
+            erros.append("Tipo de entrada invÃ¡lido.")
         if unidades_por_embalagem <= 0:
             erros.append("Quantidade por caixa/pacote deve ser maior que zero.")
         if estoque_padrao < 0:
-            erros.append("Estoque padrão não pode ser negativo.")
+            erros.append("Estoque padrÃ£o nÃ£o pode ser negativo.")
         if limite_alerta < 0:
-            erros.append("Limite de alerta não pode ser negativo.")
+            erros.append("Limite de alerta nÃ£o pode ser negativo.")
 
         if erros:
             for erro in erros:
@@ -3445,7 +3511,7 @@ def novo_produto():
             produto_existente = cursor.fetchone()
 
             if produto_existente:
-                flash("Esse produto já existe. Use Nova entrada para cadastrar um lote.", "erro")
+                flash("Esse produto jÃ¡ existe. Use Nova entrada para cadastrar um lote.", "erro")
                 return render_template("novo_produto.html", categorias=categorias_lista, form=request.form)
 
             cursor.execute("""
@@ -3578,7 +3644,7 @@ def editar_produto(id):
 
     if not produto:
         conn.close()
-        flash("Produto não encontrado.", "erro")
+        flash("Produto nÃ£o encontrado.", "erro")
         return redirect(url_for("produtos"))
 
     if request.method == "POST":
@@ -3671,7 +3737,7 @@ def excluir_produto(id):
     cursor.execute("DELETE FROM produtos WHERE id = %s", (id,))
     conn.commit()
     conn.close()
-    flash("Produto excluído com sucesso.", "sucesso")
+    flash("Produto excluÃ­do com sucesso.", "sucesso")
     return redirect(url_for("produtos"))
 
 
@@ -3751,9 +3817,9 @@ def auditoria_usuarios():
         adicionar_achado(
             "critico",
             "Lote vencido ainda com saldo",
-            "Produto vencido permanece com quantidade no estoque útil.",
+            "Produto vencido permanece com quantidade no estoque Ãºtil.",
             f"{lote['nome']} | {nome_tipo_estoque(lote['tipo_estoque'])} | lote {lote['numero_lote'] or '-'} | venc. {lote['data_vencimento']} | qtd {lote['quantidade_atual']}",
-            "Baixar o vencido, registrar motivo e conferir se houve uso após vencimento."
+            "Baixar o vencido, registrar motivo e conferir se houve uso apÃ³s vencimento."
         )
 
     cursor.execute("""
@@ -3770,10 +3836,10 @@ def auditoria_usuarios():
     for lote in cursor.fetchall():
         adicionar_achado(
             "alto",
-            "Entrada com validade muito próxima",
-            "Foi lançado lote com vencimento em até 30 dias após a entrada.",
+            "Entrada com validade muito prÃ³xima",
+            "Foi lanÃ§ado lote com vencimento em atÃ© 30 dias apÃ³s a entrada.",
             f"{lote['nome']} | {nome_tipo_estoque(lote['tipo_estoque'])} | lote {lote['numero_lote'] or '-'} | entrada {lote['data_entrada']} | venc. {lote['data_vencimento']}",
-            "Conferir se o recebimento deveria ter sido aceito e registrar orientação de uso prioritário."
+            "Conferir se o recebimento deveria ter sido aceito e registrar orientaÃ§Ã£o de uso prioritÃ¡rio."
         )
 
     cursor.execute("""
@@ -3790,10 +3856,10 @@ def auditoria_usuarios():
     for item in cursor.fetchall():
         adicionar_achado(
             "medio",
-            "Devolução repetida do mesmo produto",
-            "Muitas devoluções podem indicar retirada em excesso, fluxo confuso ou erro de registro.",
-            f"{item['produto_nome']} | usuário {item['usuario_nome']} | {item['total']} devoluções | qtd total {item['quantidade']}",
-            "Revisar com a equipe o motivo das devoluções e reforçar o fluxo correto de retirada."
+            "DevoluÃ§Ã£o repetida do mesmo produto",
+            "Muitas devoluÃ§Ãµes podem indicar retirada em excesso, fluxo confuso ou erro de registro.",
+            f"{item['produto_nome']} | usuÃ¡rio {item['usuario_nome']} | {item['total']} devoluÃ§Ãµes | qtd total {item['quantidade']}",
+            "Revisar com a equipe o motivo das devoluÃ§Ãµes e reforÃ§ar o fluxo correto de retirada."
         )
 
     cursor.execute("""
@@ -3809,10 +3875,10 @@ def auditoria_usuarios():
     for item in cursor.fetchall():
         adicionar_achado(
             "baixo",
-            "Volume alto de movimentações por usuário",
-            "Usuário concentrou muitas ações no período analisado.",
-            f"{item['usuario_nome']} | {item['total']} movimentações",
-            "Não indica erro sozinho. Usar como trilha para amostragem e conferência de rotina."
+            "Volume alto de movimentaÃ§Ãµes por usuÃ¡rio",
+            "UsuÃ¡rio concentrou muitas aÃ§Ãµes no perÃ­odo analisado.",
+            f"{item['usuario_nome']} | {item['total']} movimentaÃ§Ãµes",
+            "NÃ£o indica erro sozinho. Usar como trilha para amostragem e conferÃªncia de rotina."
         )
 
     cursor.execute("""
@@ -3828,10 +3894,10 @@ def auditoria_usuarios():
     for mov in cursor.fetchall():
         adicionar_achado(
             "medio",
-            "Movimentação de saída com quantidade alta",
-            "Saída ou transferência com volume acima do padrão de conferência.",
-            f"{mov['produto_nome']} | {mov['tipo_movimentacao']} | qtd {mov['quantidade']} | usuário {mov['usuario_nome'] or 'Sistema'} | {mov['data_movimentacao']}",
-            "Conferir documento/solicitação que justifica a quantidade movimentada."
+            "MovimentaÃ§Ã£o de saÃ­da com quantidade alta",
+            "SaÃ­da ou transferÃªncia com volume acima do padrÃ£o de conferÃªncia.",
+            f"{mov['produto_nome']} | {mov['tipo_movimentacao']} | qtd {mov['quantidade']} | usuÃ¡rio {mov['usuario_nome'] or 'Sistema'} | {mov['data_movimentacao']}",
+            "Conferir documento/solicitaÃ§Ã£o que justifica a quantidade movimentada."
         )
 
     cursor.execute("""
@@ -3845,10 +3911,10 @@ def auditoria_usuarios():
     if sem_usuario and sem_usuario["total"] > 0:
         adicionar_achado(
             "medio",
-            "Movimentações sem usuário nominal",
-            "Existem registros atribuídos ao sistema ou sem identificação direta de operador.",
-            f"{sem_usuario['total']} movimentação(ões) no período",
-            "Priorizar operações feitas com login individual e evitar uso compartilhado."
+            "MovimentaÃ§Ãµes sem usuÃ¡rio nominal",
+            "Existem registros atribuÃ­dos ao sistema ou sem identificaÃ§Ã£o direta de operador.",
+            f"{sem_usuario['total']} movimentaÃ§Ã£o(Ãµes) no perÃ­odo",
+            "Priorizar operaÃ§Ãµes feitas com login individual e evitar uso compartilhado."
         )
 
     ordem_risco = {"critico": 1, "alto": 2, "medio": 3, "baixo": 4}
@@ -3861,11 +3927,11 @@ def auditoria_usuarios():
     }
 
     recomendacoes = [
-        "Conferir primeiro achados críticos e altos antes de analisar pontos de baixo risco.",
-        "Usar login individual para toda operação de estoque.",
-        "Registrar baixa de vencidos assim que o lote sair do estoque útil.",
-        "Priorizar uso ou troca de produtos próximos do vencimento antes de abrir compra.",
-        "Revisar com a equipe produtos com devolução frequente ou saída em grande quantidade.",
+        "Conferir primeiro achados crÃ­ticos e altos antes de analisar pontos de baixo risco.",
+        "Usar login individual para toda operaÃ§Ã£o de estoque.",
+        "Registrar baixa de vencidos assim que o lote sair do estoque Ãºtil.",
+        "Priorizar uso ou troca de produtos prÃ³ximos do vencimento antes de abrir compra.",
+        "Revisar com a equipe produtos com devoluÃ§Ã£o frequente ou saÃ­da em grande quantidade.",
     ]
 
     conn.close()
@@ -4009,7 +4075,7 @@ def montar_painel_relatorios():
                 "nome": produto["nome"],
                 "categoria": produto["categoria_nome"],
                 "quantidade": produto["quantidade_atual"],
-                "tipo": "Próximo do vencimento",
+                "tipo": "PrÃ³ximo do vencimento",
                 "status": "warning"
             })
 
@@ -4148,7 +4214,7 @@ def aplicar_estilo_excel(ws, titulo, total_colunas):
 def gerar_excel(titulo, cabecalhos, linhas, nome_arquivo):
     wb = Workbook()
     ws = wb.active
-    ws.title = "Relatório"
+    ws.title = "RelatÃ³rio"
     ws.append(cabecalhos)
 
     for linha in linhas:
@@ -4192,7 +4258,7 @@ def gerar_pdf(titulo, cabecalhos, linhas, nome_arquivo):
     elementos.append(Spacer(1, 0.4 * cm))
 
     if not linhas:
-        elementos.append(Paragraph("Nenhum dado encontrado para este relatório.", styles["Normal"]))
+        elementos.append(Paragraph("Nenhum dado encontrado para este relatÃ³rio.", styles["Normal"]))
     else:
         dados = [cabecalhos]
         for linha in linhas:
@@ -4223,7 +4289,7 @@ def buscar_produtos_para_relatorio(busca="", tipo_estoque=""):
 def montar_relatorio_produtos(tipo_relatorio, busca="", tipo_estoque=""):
     produtos_lista = buscar_produtos_para_relatorio(busca, tipo_estoque)
 
-    cabecalhos = ["Produto", "Categoria", "Local", "Código de Barras", "Lote", "Vencimento", "Aberto em", "Vence após aberto", "Estoque", "Estoque padrão", "Limite alerta", "Status"]
+    cabecalhos = ["Produto", "Categoria", "Local", "CÃ³digo de Barras", "Lote", "Vencimento", "Aberto em", "Vence apÃ³s aberto", "Estoque", "Estoque padrÃ£o", "Limite alerta", "Status"]
     linhas = []
 
     for produto in produtos_lista:
@@ -4253,11 +4319,11 @@ def montar_relatorio_produtos(tipo_relatorio, busca="", tipo_estoque=""):
             ])
 
     if tipo_relatorio == "produtos":
-        titulo = "Relatório geral de produtos"
+        titulo = "RelatÃ³rio geral de produtos"
     elif tipo_relatorio == "vencimentos":
-        titulo = "Relatório de vencidos e próximos do vencimento"
+        titulo = "RelatÃ³rio de vencidos e prÃ³ximos do vencimento"
     else:
-        titulo = "Relatório de estoque baixo e zerado"
+        titulo = "RelatÃ³rio de estoque baixo e zerado"
 
     if tipo_estoque:
         titulo += f" - {nome_tipo_estoque(tipo_estoque)}"
@@ -4290,7 +4356,7 @@ def montar_relatorio_movimentacoes(busca="", tipo_movimentacao="", tipo_estoque=
     movimentacoes = cursor.fetchall()
     conn.close()
 
-    cabecalhos = ["Data", "Produto", "Usuário", "Local", "Tipo", "Quantidade", "Estoque anterior", "Estoque atual", "Observação"]
+    cabecalhos = ["Data", "Produto", "UsuÃ¡rio", "Local", "Tipo", "Quantidade", "Estoque anterior", "Estoque atual", "ObservaÃ§Ã£o"]
     linhas = []
 
     for mov in movimentacoes:
@@ -4306,7 +4372,7 @@ def montar_relatorio_movimentacoes(busca="", tipo_movimentacao="", tipo_estoque=
             mov["observacao"] or "-"
         ])
 
-    titulo = "Relatório de movimentações de estoque"
+    titulo = "RelatÃ³rio de movimentaÃ§Ãµes de estoque"
     if tipo_estoque:
         titulo += f" - {nome_tipo_estoque(tipo_estoque)}"
     else:
@@ -4334,7 +4400,7 @@ def exportar_relatorio():
         titulo, cabecalhos, linhas = montar_relatorio_produtos(tipo_relatorio, busca, tipo_estoque)
 
     if formato not in ["xlsx", "pdf"]:
-        flash("Formato de relatório inválido.", "erro")
+        flash("Formato de relatÃ³rio invÃ¡lido.", "erro")
         return redirect(url_for("relatorios"))
 
     nome_arquivo = nome_arquivo_relatorio(tipo_relatorio, formato, tipo_estoque)
@@ -4708,7 +4774,7 @@ def exportar_ordem_compra():
         tipo_estoque = ""
 
     if formato != "xlsx":
-        flash("A ordem de compra agora é exportada apenas em Excel.", "erro")
+        flash("A ordem de compra agora Ã© exportada apenas em Excel.", "erro")
         return redirect(url_for("ordem_compra"))
 
     titulo, cabecalhos, linhas = montar_dados_ordem_compra(tipo_estoque)
@@ -4847,7 +4913,7 @@ def montar_mensagem_alertas():
 
             for item in vencimentos[:20]:
                 partes.append(
-                    f"• {item['nome']} | {item['local']} | {item['status']} | venc.: {item['vencimento']}"
+                    f"â€¢ {item['nome']} | {item['local']} | {item['status']} | venc.: {item['vencimento']}"
                 )
 
     if config and config["alertar_estoque"]:
@@ -4856,11 +4922,11 @@ def montar_mensagem_alertas():
         if estoque:
             tipos_gerados.append("estoque")
             partes.append("")
-            partes.append("🚨 Estoque crítico/baixo:")
+            partes.append("ðŸš¨ Estoque crÃ­tico/baixo:")
 
             for item in estoque[:20]:
                 partes.append(
-                    f"• {item['nome']} | {item['local']} | atual: {item['atual']} | mínimo: {item['minimo']}"
+                    f"â€¢ {item['nome']} | {item['local']} | atual: {item['atual']} | mÃ­nimo: {item['minimo']}"
                 )
 
     if config and config["alertar_ordem_compra"]:
@@ -4869,11 +4935,11 @@ def montar_mensagem_alertas():
         if ordem:
             tipos_gerados.append("ordem_compra")
             partes.append("")
-            partes.append("ðŸ“¦ Ordem de compra sugerida:")
+            partes.append("Ã°Å¸â€œÂ¦ Ordem de compra sugerida:")
 
             for item in ordem[:20]:
                 partes.append(
-                    f"• {item['nome']} | {item['tipo_estoque_nome']} | comprar: {item['sugestao']}"
+                    f"â€¢ {item['nome']} | {item['tipo_estoque_nome']} | comprar: {item['sugestao']}"
                 )
 
     if not partes:
@@ -4891,7 +4957,7 @@ def enviar_email_alerta(destino, assunto, mensagem):
     smtp_from = os.environ.get("SMTP_FROM", smtp_user)
 
     if not smtp_host or not smtp_user or not smtp_password:
-        raise RuntimeError("SMTP não configurado. Configure SMTP_HOST, SMTP_USER e SMTP_PASSWORD.")
+        raise RuntimeError("SMTP nÃ£o configurado. Configure SMTP_HOST, SMTP_USER e SMTP_PASSWORD.")
 
     email = EmailMessage()
     email["Subject"] = assunto
@@ -4939,7 +5005,7 @@ def enviar_whatsapp_alerta(telefone, mensagem):
     token = os.environ.get("WHATSAPP_TOKEN")
 
     if not webhook_url:
-        raise RuntimeError("WhatsApp não configurado. Configure ULTRAMSG_INSTANCE_ID + ULTRAMSG_TOKEN ou WHATSAPP_WEBHOOK_URL.")
+        raise RuntimeError("WhatsApp nÃ£o configurado. Configure ULTRAMSG_INSTANCE_ID + ULTRAMSG_TOKEN ou WHATSAPP_WEBHOOK_URL.")
 
     payload = {
         "telefone": telefone,
@@ -4960,7 +5026,7 @@ def executar_envio_alertas(manual=True):
     config = obter_configuracao_alerta()
 
     if not config:
-        return False, "Configuração de alerta não encontrada."
+        return False, "ConfiguraÃ§Ã£o de alerta nÃ£o encontrada."
 
     mensagem, tipos = montar_mensagem_alertas()
 
@@ -5250,15 +5316,15 @@ def executar_alerta_whatsapp_automatico(forcar=False):
     config = obter_configuracao_alerta()
 
     if not config:
-        return False, "Configuração de alerta não encontrada."
+        return False, "ConfiguraÃ§Ã£o de alerta nÃ£o encontrada."
 
     if not config["usar_whatsapp"]:
-        return False, "WhatsApp automático está desativado."
+        return False, "WhatsApp automÃ¡tico estÃ¡ desativado."
 
     telefone = config["telefone_whatsapp"]
 
     if not telefone:
-        return False, "Telefone de WhatsApp não configurado."
+        return False, "Telefone de WhatsApp nÃ£o configurado."
 
     if not forcar and not pode_enviar_whatsapp_automatico(config):
         return True, "Envio ignorado para evitar mensagens repetidas no intervalo configurado."
@@ -5266,7 +5332,7 @@ def executar_alerta_whatsapp_automatico(forcar=False):
     mensagem, tipos = montar_mensagem_alertas()
 
     if not mensagem:
-        return True, "Nenhum alerta crítico encontrado para envio."
+        return True, "Nenhum alerta crÃ­tico encontrado para envio."
 
     try:
         enviar_whatsapp_alerta(telefone, mensagem)
@@ -5321,8 +5387,8 @@ def novo_usuario():
         perfil = request.form.get("perfil", "estoque")
 
         if not nome or not usuario or not senha:
-            flash("Preencha nome, usuário e senha.", "erro")
-            return render_template("usuario_form.html", usuario=None, titulo="Novo Usuário")
+            flash("Preencha nome, usuÃ¡rio e senha.", "erro")
+            return render_template("usuario_form.html", usuario=None, titulo="Novo UsuÃ¡rio")
 
         conn = conectar()
         cursor = conn.cursor()
@@ -5338,16 +5404,16 @@ def novo_usuario():
                 perfil
             ))
             conn.commit()
-            flash("Usuário cadastrado com sucesso.", "sucesso")
+            flash("UsuÃ¡rio cadastrado com sucesso.", "sucesso")
         except Exception:
             conn.rollback()
-            flash("Não foi possível cadastrar. Verifique se o usuário já existe.", "erro")
+            flash("NÃ£o foi possÃ­vel cadastrar. Verifique se o usuÃ¡rio jÃ¡ existe.", "erro")
         finally:
             conn.close()
 
         return redirect(url_for("usuarios"))
 
-    return render_template("usuario_form.html", usuario=None, titulo="Novo Usuário")
+    return render_template("usuario_form.html", usuario=None, titulo="Novo UsuÃ¡rio")
 
 
 @app.route("/usuarios/editar/<int:id>", methods=["GET", "POST"])
@@ -5364,7 +5430,7 @@ def editar_usuario(id):
 
     if not usuario:
         conn.close()
-        flash("Usuário não encontrado.", "erro")
+        flash("UsuÃ¡rio nÃ£o encontrado.", "erro")
         return redirect(url_for("usuarios"))
 
     if request.method == "POST":
@@ -5405,11 +5471,11 @@ def editar_usuario(id):
         conn.commit()
         conn.close()
 
-        flash("Usuário atualizado com sucesso.", "sucesso")
+        flash("UsuÃ¡rio atualizado com sucesso.", "sucesso")
         return redirect(url_for("usuarios"))
 
     conn.close()
-    return render_template("usuario_form.html", usuario=usuario, titulo="Editar Usuário")
+    return render_template("usuario_form.html", usuario=usuario, titulo="Editar UsuÃ¡rio")
 
 
 @app.route("/usuarios/excluir/<int:id>", methods=["POST"])
@@ -5417,7 +5483,7 @@ def editar_usuario(id):
 @admin_obrigatorio
 def excluir_usuario(id):
     if id == session.get("usuario_id"):
-        flash("Você não pode excluir o usuário que está usando agora.", "erro")
+        flash("VocÃª nÃ£o pode excluir o usuÃ¡rio que estÃ¡ usando agora.", "erro")
         return redirect(url_for("usuarios"))
 
     conn = conectar()
@@ -5427,19 +5493,19 @@ def excluir_usuario(id):
     usuario = cursor.fetchone()
     if not usuario:
         conn.close()
-        flash("Usuário não encontrado.", "erro")
+        flash("UsuÃ¡rio nÃ£o encontrado.", "erro")
         return redirect(url_for("usuarios"))
 
     if usuario["usuario"] == "admin":
         conn.close()
-        flash("O usuário admin principal não pode ser excluído.", "erro")
+        flash("O usuÃ¡rio admin principal nÃ£o pode ser excluÃ­do.", "erro")
         return redirect(url_for("usuarios"))
 
     cursor.execute("DELETE FROM usuarios WHERE id = %s", (id,))
     conn.commit()
     conn.close()
 
-    flash("Usuário excluído do sistema.", "sucesso")
+    flash("UsuÃ¡rio excluÃ­do do sistema.", "sucesso")
     return redirect(url_for("usuarios"))
 
 
@@ -5465,7 +5531,7 @@ def codigo_barras():
         if produto:
             status = calcular_status(produto)
         else:
-            flash("Nenhum lote disponível e válido encontrado para este código no estoque escolhido.", "erro")
+            flash("Nenhum lote disponÃ­vel e vÃ¡lido encontrado para este cÃ³digo no estoque escolhido.", "erro")
 
     garantir_tabela_auditoria_scanner()
 
@@ -5531,7 +5597,7 @@ def scanner_baixa_rapida():
         quantidade = 1
 
     if not codigo:
-        flash("Bipe ou informe um código de barras.", "erro")
+        flash("Bipe ou informe um cÃ³digo de barras.", "erro")
         return redirect(url_for("codigo_barras", modo="continuo", tipo_estoque=tipo_estoque))
 
     conn = conectar()
@@ -5547,9 +5613,9 @@ def scanner_baixa_rapida():
             "baixa_rapida",
             quantidade,
             "erro",
-            f"Nenhum lote disponível em {nome_tipo_estoque(tipo_estoque)}"
+            f"Nenhum lote disponÃ­vel em {nome_tipo_estoque(tipo_estoque)}"
         )
-        flash("Nenhum lote disponível e válido para baixa rápida neste estoque.", "erro")
+        flash("Nenhum lote disponÃ­vel e vÃ¡lido para baixa rÃ¡pida neste estoque.", "erro")
         return redirect(url_for("codigo_barras", codigo=codigo, modo="continuo", tipo_estoque=tipo_estoque))
 
     if produto_esta_vencido(produto):
@@ -5578,7 +5644,7 @@ def scanner_baixa_rapida():
             "erro",
             "Estoque insuficiente"
         )
-        flash("Estoque insuficiente para baixa rápida.", "erro")
+        flash("Estoque insuficiente para baixa rÃ¡pida.", "erro")
         return redirect(url_for("codigo_barras", codigo=codigo, modo="continuo", tipo_estoque=tipo_estoque))
 
     estoque_anterior = produto["quantidade_atual"]
@@ -5611,7 +5677,7 @@ def scanner_baixa_rapida():
         f"Lote {produto['numero_lote'] or '-'} baixado por scanner em {nome_tipo_estoque(tipo_estoque)}"
     )
 
-    flash(f"Baixa rápida realizada: {produto['nome']} (-{quantidade}) no lote {produto['numero_lote'] or '-'}.", "sucesso")
+    flash(f"Baixa rÃ¡pida realizada: {produto['nome']} (-{quantidade}) no lote {produto['numero_lote'] or '-'}.", "sucesso")
     return redirect(url_for("codigo_barras", modo="continuo", scanner_status="sucesso", tipo_estoque=tipo_estoque))
 
 
@@ -5626,7 +5692,7 @@ def alertas_visual():
     try:
         mensagem, tipos = montar_mensagem_alertas()
     except Exception:
-        mensagem = "Não foi possível montar os alertas no momento."
+        mensagem = "NÃ£o foi possÃ­vel montar os alertas no momento."
         tipos = []
 
     return render_template(
@@ -5682,7 +5748,7 @@ def config_alertas():
         conn.commit()
         conn.close()
 
-        flash("Configurações de alerta salvas com sucesso.", "sucesso")
+        flash("ConfiguraÃ§Ãµes de alerta salvas com sucesso.", "sucesso")
         return redirect(url_for("config_alertas"))
 
     conn = conectar()
@@ -5794,7 +5860,7 @@ def alterar_senha():
         return redirect(url_for("configuracoes"))
 
     if nova_senha != confirmar_senha:
-        flash("A confirmação da nova senha não confere.", "erro")
+        flash("A confirmaÃ§Ã£o da nova senha nÃ£o confere.", "erro")
         return redirect(url_for("configuracoes"))
 
     conn = conectar()
@@ -5842,7 +5908,7 @@ def reset_sistema():
 
     return """
     <h1>Zerar sistema</h1>
-    <p>Isso vai apagar produtos, categorias, movimentações e histórico de alertas.</p>
+    <p>Isso vai apagar produtos, categorias, movimentaÃ§Ãµes e histÃ³rico de alertas.</p>
     <form method="POST">
         <button type="submit" onclick="return confirm('Tem certeza que deseja zerar o sistema?')">
             Zerar sistema
@@ -5850,8 +5916,39 @@ def reset_sistema():
     </form>
     """
 
-# Inicialização do banco para ambiente local e deploy
+# InicializaÃ§Ã£o do banco para ambiente local e deploy
+def criar_indices_performance():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    indices = [
+        "CREATE INDEX IF NOT EXISTS idx_produtos_ativo_nome ON produtos (ativo, nome)",
+        "CREATE INDEX IF NOT EXISTS idx_produtos_categoria ON produtos (categoria_id)",
+        "CREATE INDEX IF NOT EXISTS idx_produtos_codigo_barras ON produtos (codigo_barras)",
+        "CREATE INDEX IF NOT EXISTS idx_produtos_nome_busca ON produtos (lower(nome))",
+        "CREATE INDEX IF NOT EXISTS idx_produto_estoques_produto ON produto_estoques (produto_id)",
+        "CREATE INDEX IF NOT EXISTS idx_produto_estoques_tipo_ativo ON produto_estoques (tipo_estoque, ativo)",
+        "CREATE INDEX IF NOT EXISTS idx_lotes_produto_estoque ON lotes (produto_estoque_id)",
+        "CREATE INDEX IF NOT EXISTS idx_lotes_ativo_quantidade ON lotes (ativo, quantidade_atual)",
+        "CREATE INDEX IF NOT EXISTS idx_lotes_vencimento ON lotes (data_vencimento)",
+        "CREATE INDEX IF NOT EXISTS idx_lotes_numero_busca ON lotes (lower(numero_lote))",
+        "CREATE INDEX IF NOT EXISTS idx_movimentacoes_data ON movimentacoes (data_movimentacao DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_movimentacoes_produto ON movimentacoes (produto_id)",
+        "CREATE INDEX IF NOT EXISTS idx_movimentacoes_lote ON movimentacoes (lote_id)",
+        "CREATE INDEX IF NOT EXISTS idx_movimentacoes_tipo ON movimentacoes (tipo_movimentacao)",
+        "CREATE INDEX IF NOT EXISTS idx_produtos_abertos_vencimento ON produtos_abertos (vencimento_apos_aberto)",
+        "CREATE INDEX IF NOT EXISTS idx_produtos_abertos_produto ON produtos_abertos (produto_id)",
+        "CREATE INDEX IF NOT EXISTS idx_produto_codigos_codigo_ativo ON produto_codigos (codigo_barras, ativo)",
+    ]
+
+    for sql in indices:
+        cursor.execute(sql)
+
+    conn.commit()
+    conn.close()
+
 criar_banco()
+criar_indices_performance()
 
 iniciar_backup_automatico()
 
@@ -5945,7 +6042,7 @@ def importar_estoque():
             conn.commit()
             conn.close()
 
-            flash(f"Importação concluída. Novos: {importados}. Atualizados: {atualizados}.", "sucesso")
+            flash(f"ImportaÃ§Ã£o concluÃ­da. Novos: {importados}. Atualizados: {atualizados}.", "sucesso")
             return redirect(url_for("produtos"))
 
         except Exception as erro:
@@ -5959,13 +6056,13 @@ def importar_estoque():
 @admin_obrigatorio
 def restaurar_backup_local(nome_arquivo):
     try:
-        # Backup de segurança antes de restaurar
+        # Backup de seguranÃ§a antes de restaurar
         gerar_backup_sistema()
 
         caminho = os.path.join(BACKUP_DIR, nome_arquivo)
 
         if not os.path.exists(caminho):
-            flash("Arquivo de backup não encontrado.", "erro")
+            flash("Arquivo de backup nÃ£o encontrado.", "erro")
             return redirect(url_for("painel_backup"))
 
         with open(caminho, "r", encoding="utf-8") as arquivo:
@@ -6052,7 +6149,7 @@ def restaurar_backup_local(nome_arquivo):
         conn.commit()
         conn.close()
 
-        flash("Backup restaurado com sucesso. Um backup de segurança foi criado antes da restauração.", "sucesso")
+        flash("Backup restaurado com sucesso. Um backup de seguranÃ§a foi criado antes da restauraÃ§Ã£o.", "sucesso")
         return redirect(url_for("produtos"))
 
     except Exception as erro:
@@ -6078,6 +6175,7 @@ def backup_automatico_externo():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
