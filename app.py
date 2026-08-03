@@ -80,8 +80,9 @@ def conectar_direto():
 
 
 class ConexaoPool:
-    def __init__(self, conexao):
+    def __init__(self, conexao, pool_conexoes):
         self._conexao = conexao
+        self._pool = pool_conexoes
         self._devolvida = False
 
     def __getattr__(self, nome):
@@ -91,10 +92,29 @@ class ConexaoPool:
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        self.close()
+        try:
+            if self._conexao and not self._conexao.closed:
+                if exc_type is None:
+                    self._conexao.commit()
+                else:
+                    self._conexao.rollback()
+        finally:
+            self.close()
+
+    @property
+    def closed(self):
+        return self._conexao.closed if self._conexao else True
+
+    def cursor(self, *args, **kwargs):
+        return self._conexao.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conexao.commit()
+
+    def rollback(self):
+        return self._conexao.rollback()
 
     def close(self):
-        global _db_pool
         if self._devolvida:
             return
 
@@ -102,15 +122,12 @@ class ConexaoPool:
         conexao = self._conexao
         self._conexao = None
 
-        if _db_pool and conexao and not conexao.closed:
-            try:
-                if not conexao.autocommit:
-                    conexao.rollback()
-            except psycopg2.Error:
-                _db_pool.putconn(conexao, close=True)
-                return
-            _db_pool.putconn(conexao)
-        elif conexao and not conexao.closed:
+        if not conexao:
+            return
+
+        if self._pool and not conexao.closed:
+            self._pool.putconn(conexao)
+        elif not conexao.closed:
             conexao.close()
 
 
@@ -138,7 +155,14 @@ def obter_pool_conexoes():
 
 
 def conectar():
-    return ConexaoPool(obter_pool_conexoes().getconn())
+    pool_conexoes = obter_pool_conexoes()
+    conexao = pool_conexoes.getconn()
+
+    if conexao.closed:
+        pool_conexoes.putconn(conexao, close=True)
+        conexao = pool_conexoes.getconn()
+
+    return ConexaoPool(conexao, pool_conexoes)
 def criar_banco():
     conn = conectar()
     cursor = conn.cursor()
@@ -458,8 +482,6 @@ def garantir_tabela_usuarios():
 
 
 def buscar_usuario_login(usuario):
-    garantir_tabela_usuarios()
-
     conn = conectar()
     cursor = conn.cursor()
     cursor.execute("""
@@ -475,8 +497,6 @@ def buscar_usuario_login(usuario):
 
 
 def listar_usuarios():
-    garantir_tabela_usuarios()
-
     conn = conectar()
     cursor = conn.cursor()
     cursor.execute("""
@@ -1090,8 +1110,6 @@ def index():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    garantir_tabela_usuarios()
-
     if request.method == "POST":
         usuario_digitado = (
             request.form.get("usuario")
@@ -5975,6 +5993,7 @@ def criar_indices_performance():
     conn.close()
 
 criar_banco()
+garantir_tabela_usuarios()
 criar_indices_performance()
 
 iniciar_backup_automatico()
