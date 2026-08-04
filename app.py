@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, g, has_request_context
 import os
+import time
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2 import pool
@@ -126,6 +127,12 @@ class ConexaoPool:
             return
 
         if self._pool and not conexao.closed:
+            try:
+                if not conexao.autocommit:
+                    conexao.rollback()
+            except psycopg2.Error:
+                self._pool.putconn(conexao, close=True)
+                return
             self._pool.putconn(conexao)
         elif not conexao.closed:
             conexao.close()
@@ -159,6 +166,13 @@ def conectar():
     conexao = pool_conexoes.getconn()
 
     if conexao.closed:
+        pool_conexoes.putconn(conexao, close=True)
+        conexao = pool_conexoes.getconn()
+
+    try:
+        with conexao.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except psycopg2.Error:
         pool_conexoes.putconn(conexao, close=True)
         conexao = pool_conexoes.getconn()
 
@@ -482,18 +496,36 @@ def garantir_tabela_usuarios():
 
 
 def buscar_usuario_login(usuario):
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT *
-        FROM usuarios
-        WHERE usuario = %s
-          AND ativo = TRUE
-        LIMIT 1
-    """, (usuario,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    for tentativa in range(2):
+        conn = None
+        cursor = None
+        try:
+            conn = conectar()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT *
+                FROM usuarios
+                WHERE usuario = %s
+                  AND ativo = TRUE
+                LIMIT 1
+            """, (usuario,))
+            return cursor.fetchone()
+        except psycopg2.OperationalError:
+            if conn:
+                try:
+                    conn.rollback()
+                except psycopg2.Error:
+                    pass
+            app.logger.exception("Conexao PostgreSQL encerrada ao buscar usuario. Tentativa %s", tentativa + 1)
+            if tentativa == 1:
+                raise
+            time.sleep(0.5)
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+    return None
 
 
 def listar_usuarios():
