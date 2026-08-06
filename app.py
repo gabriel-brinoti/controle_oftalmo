@@ -176,7 +176,34 @@ def conectar():
         pool_conexoes.putconn(conexao, close=True)
         conexao = pool_conexoes.getconn()
 
-    return ConexaoPool(conexao, pool_conexoes)
+    conexao_pool = ConexaoPool(conexao, pool_conexoes)
+
+    if has_request_context():
+        if not hasattr(g, "_conexoes_banco"):
+            g._conexoes_banco = []
+        g._conexoes_banco.append(conexao_pool)
+
+    return conexao_pool
+
+@app.teardown_request
+def devolver_conexoes_da_requisicao(exception=None):
+    """
+    Proteção global contra vazamento de conexões.
+
+    Toda conexão criada durante uma requisição é registrada no objeto `g`.
+    Ao terminar a requisição, inclusive quando ocorre uma exceção ou retorno
+    antecipado, todas as conexões ainda abertas são devolvidas ao pool.
+    """
+    conexoes = getattr(g, "_conexoes_banco", [])
+
+    for conexao in reversed(conexoes):
+        try:
+            conexao.close()
+        except Exception:
+            app.logger.exception("Erro ao devolver conexão PostgreSQL ao pool.")
+
+    conexoes.clear()
+
 def criar_banco():
     conn = conectar()
     cursor = conn.cursor()
